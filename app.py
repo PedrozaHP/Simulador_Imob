@@ -65,7 +65,7 @@ with col1:
     taxa_juros = st.number_input("Taxa de Juros Anual (%)", value=9.5, step=0.1, format="%.2f")
 with col2:
     entrada = st.number_input("Valor da Entrada (R$)", value=60000.0, step=10000.0, format="%.2f")
-    # Prazo estendido e flexível para longos períodos (até 420 meses / 35 anos)
+    # Prazo flexível para longos períodos (meses corridos, ex: 360 ou 420 meses)
     meses = st.number_input("Prazo (Meses)", value=360, min_value=1, max_value=420, step=1)
 
 # ==========================================
@@ -81,11 +81,12 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
         is_sac = "SAC" in sistema_amortizacao
         nome_sistema_escolhido = "Tabela SAC" if is_sac else "Tabela Price"
         
-        # Calculando apenas o sistema escolhido pelo usuário para focar a proposta
+        # Calculando o sistema escolhido mês a mês de forma rigorosa
+        dados_financiamento = []
+        
         if is_sac:
             amortizacao_sac = valor_financiado / meses if meses > 0 else 0
             saldo_devedor = valor_financiado
-            dados_financiamento = []
             for mes in range(1, meses + 1):
                 juros = saldo_devedor * taxa_mensal
                 prestacao = amortizacao_sac + juros
@@ -104,7 +105,6 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
             else:
                 prestacao_price = valor_financiado / meses if meses > 0 else 0
                 
-            dados_financiamento = []
             for mes in range(1, meses + 1):
                 juros = saldo_devedor * taxa_mensal
                 amortizacao_price = prestacao_price - juros
@@ -119,17 +119,19 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
                 
         df_escolhido = pd.DataFrame(dados_financiamento)
         
-        st.success(f"✅ Simulação gerada com sucesso via **{nome_sistema_escolhido}**!")
+        st.success(f"✅ Simulação gerada com sucesso via **{nome_sistema_escolhido}** para **{meses} meses**!")
         
         if is_sac:
-            st.write(f"1ª Prestação SAC: **R$ {df_escolhido.iloc[0]['Prestação (R$)']:,.2f}** | Última: **R$ {df_escolhido.iloc[-1]['Prestação (R$)']:,.2f}**")
+            st.write(f"1ª Prestação SAC: **R$ {df_escolhido.iloc[0]['Prestação (R$)']:,.2f}** | Última Mês {meses}: **R$ {df_escolhido.iloc[-1]['Prestação (R$)']:,.2f}**")
         else:
-            st.write(f"Prestação Fixa Price: **R$ {df_escolhido.iloc[0]['Prestação (R$)']:,.2f}**")
+            st.write(f"Prestação Fixa Price (Meses 1 ao {meses}): **R$ {df_escolhido.iloc[0]['Prestação (R$)']:,.2f}**")
             
-        st.dataframe(df_escolhido.head(5))
+        # Exibindo a tabela interativa na tela com os primeiros meses e opção de expansão completa
+        st.write("📋 **Prévia da Evolução Mensal (passo a passo do financiamento):**")
+        st.dataframe(df_escolhido, use_container_width=True, height=350)
         
         # ------------------------------------------
-        # CRIANDO O EXCEL PERSONALIZADO (FOCADO NO SISTEMA ESCOLHIDO)
+        # CRIANDO O EXCEL COM O FLUXO MÊS A MÊS COMPLETO
         # ------------------------------------------
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -192,7 +194,7 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
                     ws_resumo.write(linha, 1, str(valor), fmt_destaque_chave)
                 linha += 1
 
-            # --- ABA 2: FLUXO DETALHADO DO SISTEMA ESCOLHIDO ---
+            # --- ABA 2: FLUXO MÊS A MÊS COMPLETO DO SISTEMA ESCOLHIDO ---
             nome_aba_fluxo = "Fluxo SAC" if is_sac else "Fluxo Price"
             ws_fluxo = workbook.add_worksheet(nome_aba_fluxo)
             cabecalhos = ["Mês", "Prestação (R$)", "Amortização (R$)", "Juros (R$)", "Saldo Devedor (R$)"]
@@ -203,6 +205,7 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
             ws_fluxo.set_column('A:A', 10)
             ws_fluxo.set_column('B:E', 22)
             
+            # Preenche todas as linhas mês a mês (do mês 1 até o último mês escolhido)
             for row_idx, linha_dados in enumerate(dados_financiamento, start=1):
                 ws_fluxo.write(row_idx, 0, linha_dados["Mês"], fmt_celula)
                 ws_fluxo.write(row_idx, 1, linha_dados["Prestação (R$)"], fmt_moeda)
@@ -212,8 +215,8 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
 
         # Botão de Download
         st.download_button(
-            label=f"📥 Baixar Planilha Profissional ({nome_sistema_escolhido}) para o Cliente",
+            label=f"📥 Baixar Planilha Completa Mês a Mês ({nome_sistema_escolhido})",
             data=buffer.getvalue(),
-            file_name=f"Proposta_{nome_sistema_escolhido.replace(' ', '_')}.xlsx",
+            file_name=f"Proposta_{nome_sistema_escolhido.replace(' ', '_')}_{meses}Meses.xlsx",
             mime="application/vnd.ms-excel"
         )
