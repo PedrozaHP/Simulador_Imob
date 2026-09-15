@@ -43,9 +43,9 @@ if st.sidebar.button("Sair / Trocar Conta"):
 st.markdown("---")
 
 # ==========================================
-# 4. DADOS DA NEGOCIAÇÃO
+# 4. DADOS DA NEGOCIAÇÃO E ADICIONAIS
 # ==========================================
-st.subheader("🏗️ Dados da Negociação e Amortização")
+st.subheader("🏗️ Dados da Negociação e Condições")
 
 sistema_amortizacao = st.radio(
     "Sistema de Amortização:",
@@ -59,17 +59,27 @@ with col1:
     taxa_juros = st.number_input("Taxa de Juros Anual (%)", value=9.5, step=0.1, format="%.2f")
 with col2:
     entrada = st.number_input("Valor da Entrada (R$)", value=60000.0, step=10000.0, format="%.2f")
-    meses = st.number_input("Prazo (Meses)", value=360, min_value=1, max_value=420, step=1)
+    meses = st.number_input("Prazo Total (Meses)", value=360, min_value=1, max_value=420, step=1)
 
-# Campo extra pensado para o corretor: Simulação de Amortização Extra
+# Seção de FGTS e Evolução de Obra Estimada
 st.markdown("---")
-st.subheader("💡 Simulação de Amortização Extra (Opcional)")
-col_a, col_b = st.columns(2)
-with col_a:
-    valor_amortizacao_extra = st.number_input("Valor de Recurso Extra / FGTS (R$)", value=20000.0, step=5000.0, format="%.2f")
-with col_b:
-    mes_amortizacao = st.number_input("Mês em que será aplicada a amortização", value=12, min_value=1, max_value=meses, step=1)
-    opcao_amortizacao = st.selectbox("Efeito da Amortização:", ["Reduzir o Prazo (Economiza mais juros)", "Reduzir o Valor da Parcela"])
+st.subheader("💡 Condições Especiais da Planta (Opcional)")
+
+col_fgts1, col_fgts2 = st.columns(2)
+with col_fgts1:
+    usar_fgts = st.checkbox("Cliente vai utilizar FGTS / Recurso Vinculado?")
+with col_fgts2:
+    valor_fgts = st.number_input("Valor do FGTS (R$)", value=15000.0, step=5000.0, format="%.2f", disabled=not usar_fgts)
+
+col_obra1, col_obra2 = st.columns(2)
+with col_obra1:
+    incluir_obra = st.checkbox("Incluir estimativa de Evolução de Obra?")
+with col_obra2:
+    meses_obra = st.number_input("Duração estimada da obra (Meses)", value=30, min_value=1, max_value=60, step=1, disabled=not incluir_obra)
+    valor_medio_obra = st.number_input("Valor Médio Estimado da Obra/Mês (R$)", value=450.0, step=50.0, format="%.2f", disabled=not incluir_obra)
+
+if incluir_obra:
+    st.info("ℹ️ **Fonte Oficial de Acompanhamento:** Durante a construção, o avanço físico e os valores cobrados da evolução de obra podem ser monitorados de forma oficial e segura pelo **App Habitação CAIXA** (ou portal do banco financiador).")
 
 # ==========================================
 # 5. PROCESSAMENTO DO FLUXO
@@ -78,7 +88,9 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
     if valor_imovel <= 0 or meses <= 0:
         st.warning("⚠️ Preencha o Valor do Imóvel e o Prazo corretamente.")
     else:
-        valor_financiado = valor_imovel - entrada
+        valor_financiado = (valor_imovel - entrada - valor_fgts) if usar_fgts else (valor_imovel - entrada)
+        if valor_financiado < 0: valor_financiado = 0
+        
         taxa_mensal = (taxa_juros / 100) / 12
         is_sac = "SAC" in sistema_amortizacao
         nome_sistema = "Tabela SAC" if is_sac else "Tabela Price"
@@ -90,52 +102,52 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             amortizacao_base = valor_financiado / meses if meses > 0 else 0
             for mes in range(1, meses + 1):
                 juros = saldo_devedor * taxa_mensal
-                prestacao = amortizacao_base + juros
+                prestacao_fin = amortizacao_base + juros
                 
-                # Verifica se há amortização extra neste mês específico
-                amortizacao_total_mes = amortizacao_base
-                if mes == mes_amortizacao and valor_amortizacao_extra > 0:
-                    amortizacao_total_mes += valor_amortizacao_extra
+                prestacao_total = prestacao_fin
+                obs_fase = "Pós-Obra / Financiado"
+                if incluir_obra and mes <= meses_obra:
+                    prestacao_total += valor_medio_obra
+                    obs_fase = "Fase de Obras (Valor Estimativo)"
                 
-                saldo_devedor -= amortizacao_total_mes
-                if saldo_devedor < 0:
-                    saldo_devedor = 0
+                saldo_devedor -= amortizacao_base
+                if saldo_devedor < 0: saldo_devedor = 0
                     
                 dados_financiamento.append({
                     "Mês": mes,
                     "Ano": f"Ano {(mes - 1) // 12 + 1}",
-                    "Parcela (R$)": round(prestacao, 2),
-                    "Amortização (R$)": round(amortizacao_total_mes, 2),
+                    "Fase": obs_fase,
+                    "Parcela (R$)": round(prestacao_total, 2),
+                    "Amortização (R$)": round(amortizacao_base, 2),
                     "Saldo Devedor (R$)": round(saldo_devedor, 2)
                 })
-                if saldo_devedor == 0:
-                    break
         else:
             if taxa_mensal > 0 and meses > 0:
                 prestacao_price = valor_financiado * (taxa_mensal * (1 + taxa_mensal)**meses) / ((1 + taxa_mensal)**meses - 1)
             else:
-                prestacao_price = valor_financiado / meses
+                prestacao_price = valor_financiado / meses if meses > 0 else 0
                 
             for mes in range(1, meses + 1):
                 juros = saldo_devedor * taxa_mensal
                 amortizacao_price = prestacao_price - juros
                 
-                if mes == mes_amortizacao and valor_amortizacao_extra > 0:
-                    amortizacao_price += valor_amortizacao_extra
+                prestacao_total = prestacao_price
+                obs_fase = "Pós-Obra / Financiado"
+                if incluir_obra and mes <= meses_obra:
+                    prestacao_total += valor_medio_obra
+                    obs_fase = "Fase de Obras (Valor Estimativo)"
                     
                 saldo_devedor -= amortizacao_price
-                if saldo_devedor < 0:
-                    saldo_devedor = 0
+                if saldo_devedor < 0: saldo_devedor = 0
                     
                 dados_financiamento.append({
                     "Mês": mes,
                     "Ano": f"Ano {(mes - 1) // 12 + 1}",
-                    "Parcela (R$)": round(prestacao_price, 2),
+                    "Fase": obs_fase,
+                    "Parcela (R$)": round(prestacao_total, 2),
                     "Amortização (R$)": round(amortizacao_price, 2),
                     "Saldo Devedor (R$)": round(saldo_devedor, 2)
                 })
-                if saldo_devedor == 0:
-                    break
 
         df_cliente = pd.DataFrame(dados_financiamento)
         
@@ -149,11 +161,8 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             workbook = writer.book
             ws = workbook.add_worksheet('Proposta Comercial')
-            
-            # Deixando a grade visível
             ws.hide_gridlines(0)
             
-            # Cores e Estilos
             cor_azul_escuro = "#1F4E78"
             cor_cinza_claro = "#F2F2F2"
             
@@ -169,7 +178,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             fmt_valor_texto = workbook.add_format({
                 'font_color': '#000000', 'bg_color': cor_cinza_claro, 'border': 1, 'align': 'center', 'valign': 'middle'
             })
-            
             fmt_cabecalho_tabela = workbook.add_format({
                 'bold': True, 'font_color': 'white', 'bg_color': '#2F5597', 'align': 'center', 'valign': 'middle', 'border': 1
             })
@@ -183,43 +191,45 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             # Larguras das colunas
             ws.set_column('A:A', 10)
             ws.set_column('B:B', 14)
-            ws.set_column('C:E', 22)
+            ws.set_column('C:C', 32)
+            ws.set_column('D:F', 20)
             
-            # Bloco Superior: Resumo Executivo para o Cliente (Tudo na mesma página)
-            ws.merge_range('A1:E1', 'RESUMO DA PROPOSTA COMERCIAL', fmt_titulo)
+            # Bloco Superior: Resumo Executivo para o Cliente
+            ws.merge_range('A1:F1', 'RESUMO DA PROPOSTA COMERCIAL & FLUXO', fmt_titulo)
             
             resumo_linhas = [
-                ("Imóvel / Operação", f"Imóvel Residencial ({nome_sistema})"),
+                ("Imóvel / Operação", f"Imóvel na Planta ({nome_sistema})"),
                 ("Corretor Responsável", nome_corretor),
                 ("Contato WhatsApp", telefone),
                 ("Valor do Imóvel", valor_imovel),
                 ("Valor da Entrada", entrada),
-                ("Valor Financiado", valor_financiado),
+                ("Utilização de FGTS", f"R$ {valor_fgts:,.2f}" if usar_fgts else "Não Utilizado"),
+                ("Valor Financiado Líquido", valor_financiado),
                 ("Prazo Contratual", f"{meses} Meses"),
                 ("Taxa de Juros", f"{taxa_juros}% a.a."),
                 ("Valor da 1ª Parcela", df_cliente.iloc[0]['Parcela (R$)'])
             ]
             
-            if valor_amortizacao_extra > 0:
-                resumo_linhas.append(("Amortização Extra Simulada", f"R$ {valor_amortizacao_extra:,.2f} no mês {mes_amortizacao}"))
+            if incluir_obra:
+                resumo_linhas.append(("Evolução de Obra (Estimada)", f"R$ {valor_medio_obra:,.2f} / mês por {meses_obra} meses (Valor Estimativo)"))
+                resumo_linhas.append(("Canal Oficial de Acompanhamento", "App Habitação CAIXA / Portal do Banco"))
 
             idx_linha = 2
             for rotulo, val in resumo_linhas:
                 ws.write(idx_linha, 0, rotulo, fmt_rotulo)
-                ws.merge_range(idx_linha, 1, idx_linha, 4, "", fmt_rotulo) # preenche o fundo
+                ws.merge_range(idx_linha, 1, idx_linha, 5, "", fmt_rotulo)
                 if isinstance(val, (int, float)):
                     ws.write(idx_linha, 1, val, fmt_valor_dado)
                 else:
                     ws.write(idx_linha, 1, str(val), fmt_valor_texto)
                 idx_linha += 1
                 
-            # Espaço antes da tabela
             idx_linha += 1
-            ws.merge_range(idx_linha, 0, idx_linha, 4, 'FLUXO DETALHADO DA EVOLUÇÃO DO FINANCIAMENTO', fmt_titulo)
+            ws.merge_range(idx_linha, 0, idx_linha, 5, 'FLUXO DETALHADO DA EVOLUÇÃO DO FINANCIAMENTO', fmt_titulo)
             idx_linha += 1
             
             # Cabeçalhos da Tabela Mês a Mês
-            cabecalhos = ["Mês", "Período", "Valor da Parcela", "Amortização", "Saldo Devedor Atual"]
+            cabecalhos = ["Mês", "Período", "Fase / Condição", "Valor da Parcela", "Amortização", "Saldo Devedor Atual"]
             for col_idx, cab in enumerate(cabecalhos):
                 ws.write(idx_linha, col_idx, cab, fmt_cabecalho_tabela)
             
@@ -230,17 +240,17 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 idx_linha += 1
                 ws.write(idx_linha, 0, item["Mês"], fmt_celula)
                 ws.write(idx_linha, 1, item["Ano"], fmt_celula)
-                ws.write(idx_linha, 2, item["Parcela (R$)"], fmt_moeda)
-                ws.write(idx_linha, 3, item["Amortização (R$)"], fmt_moeda)
-                ws.write(idx_linha, 4, item["Saldo Devedor (R$)"], fmt_moeda)
+                ws.write(idx_linha, 2, item["Fase"], fmt_celula)
+                ws.write(idx_linha, 3, item["Parcela (R$)"], fmt_moeda)
+                ws.write(idx_linha, 4, item["Amortização (R$)"], fmt_moeda)
+                ws.write(idx_linha, 5, item["Saldo Devedor (R$)"], fmt_moeda)
                 
-            # Congela painéis logo abaixo do cabeçalho da tabela para rolar com facilidade
             ws.freeze_panes(linha_inicio_tabela, 0)
 
         # Botão de Download
         st.download_button(
             label=f"📥 Baixar Planilha Executiva para o Cliente ({nome_sistema})",
             data=buffer.getvalue(),
-            file_name=f"Proposta_Comercial_{nome_sistema.replace(' ', '_')}.xlsx",
+            file_name=f"Proposta_Imovel_Planta_{nome_sistema.replace(' ', '_')}.xlsx",
             mime="application/vnd.ms-excel"
         )
