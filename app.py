@@ -45,7 +45,7 @@ if st.sidebar.button("Sair / Trocar Conta"):
     st.rerun()
 
 st.markdown("---")
-st.write("Gere simulações de financiamento personalizadas e profissionais com a sua marca.")
+st.write("Gere simulações de financiamento personalizadas e profissionais aqui.")
 
 # ==========================================
 # 4. DADOS DA NEGOCIAÇÃO E ESCOLHA DO SISTEMA
