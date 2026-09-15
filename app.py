@@ -6,16 +6,10 @@ import io
 st.set_page_config(page_title="Simulador Imobiliário Profissional", layout="centered")
 
 # ==========================================
-# 2. SISTEMA DE LOGIN E SEGURANÇA POR USUÁRIO
+# 2. SISTEMA DE LOGIN VIA COFRE SEGURO (SECRETS)
 # ==========================================
-# Sua base de dados de clientes licenciados
-CLIENTES_AUTORIZADOS = {
-    "adm": {
-        "nome": "Pedro Pedroza - CRECI 12345-SP",
-        "telefone": "(11) 99999-9999"
-    },
-    
-}
+# Puxa os clientes cadastrados de forma oculta do painel do Streamlit Cloud
+CLIENTES_AUTORIZADOS = st.secrets.get("CLIENTES_AUTORIZADOS", {})
 
 st.title("🏗️ Simulador Imobiliário Profissional")
 
@@ -139,7 +133,7 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
                 ("Valor da Entrada", entrada),
                 ("Valor Financiado", valor_financiado),
                 ("Prazo Total", f"{meses} Meses ({meses//12} Anos)"),
-                ("Taxa de Juros Anual", f"{taxa_juros}% a.a.")
+                ("Taxa de Juros Anual", f"{tax_juros}% a.a.")
             ]
             
             linha = 3
