@@ -62,11 +62,11 @@ st.write("Gere simulações de financiamento (Tabela SAC) personalizadas e profi
 st.subheader("Dados da Negociação")
 col1, col2 = st.columns(2)
 with col1:
-    valor_imovel = st.number_input("Valor do Imóvel (R$)", value=500000.0, step=10000.0)
-    taxa_juros = st.number_input("Taxa de Juros Anual (%)", value=9.5, step=0.1)
+    valor_imovel = st.number_input("Valor do Imóvel (R$)", value=0.0, step=10000.0, format="%.2f")
+    taxa_juros = st.number_input("Taxa de Juros Anual (%)", value=0.0, step=0.1, format="%.2f")
 with col2:
-    entrada = st.number_input("Valor da Entrada (R$)", value=100000.0, step=10000.0)
-    meses = st.number_input("Prazo (Meses)", value=360, step=12)
+    entrada = st.number_input("Valor da Entrada (R$)", value=0.0, step=10000.0, format="%.2f")
+    meses = st.number_input("Prazo (Meses)", value=0, step=12)
 
 # ==========================================
 # 5. PROCESSAMENTO E GERAÇÃO DO EXCEL
