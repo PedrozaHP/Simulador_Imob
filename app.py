@@ -28,8 +28,8 @@ if "email_logado" not in st.session_state:
 
 # Se não estiver logado, mostra a tela de bloqueio
 if not st.session_state.email_logado:
-    st.info("💡 Área restrita para corretores licenciados. Insira seu Usuário cadastrado para acessar a ferramenta.")
-    email_input = st.text_input("Seu Usuário de Acesso:")
+    st.info("💡 Área restrita para corretores licenciados. Insira seu e-mail cadastrado para acessar a ferramenta.")
+    email_input = st.text_input("Seu E-mail de Acesso:")
     
     if st.button("🔓 Entrar na Ferramenta"):
         if email_input in CLIENTES_AUTORIZADOS:
