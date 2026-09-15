@@ -8,7 +8,6 @@ st.set_page_config(page_title="Simulador Imobiliário Profissional", layout="cen
 # ==========================================
 # 2. SISTEMA DE LOGIN VIA COFRE SEGURO (SECRETS)
 # ==========================================
-# Puxa os clientes cadastrados de forma oculta do painel do Streamlit Cloud
 CLIENTES_AUTORIZADOS = st.secrets.get("CLIENTES_AUTORIZADOS", {})
 
 st.title("🏗️ Simulador Imobiliário Profissional")
@@ -23,7 +22,6 @@ if not st.session_state.usuario_logado:
     usuario_input = st.text_input("Seu Usuário de Acesso:")
     
     if st.button("🔓 Entrar na Ferramenta"):
-        # Limpa espaços e transforma em minúsculo para evitar erro de digitação
         usuario_limpo = usuario_input.strip().lower()
         
         if usuario_limpo in CLIENTES_AUTORIZADOS:
@@ -31,7 +29,7 @@ if not st.session_state.usuario_logado:
             st.rerun()
         else:
             st.error("❌ Usuário não encontrado ou licença inativa. Entre em contato para adquirir seu acesso.")
-    st.stop() # Para a execução aqui se não estiver logado!
+    st.stop()
 
 # ==========================================
 # 3. ÁREA LOGADA (Usuário Autenticado)
@@ -133,7 +131,7 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
                 ("Valor da Entrada", entrada),
                 ("Valor Financiado", valor_financiado),
                 ("Prazo Total", f"{meses} Meses ({meses//12} Anos)"),
-                ("Taxa de Juros Anual", f"{tax_juros}% a.a.")
+                ("Taxa de Juros Anual", f"{taxa_juros}% a.a.") # <--- Correção feita aqui de tax_juros para taxa_juros
             ]
             
             linha = 3
