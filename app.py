@@ -65,7 +65,7 @@ with col1:
     taxa_juros = st.number_input("Taxa de Juros Anual (%)", value=0.0, step=0.1, format="%.2f")
 with col2:
     entrada = st.number_input("Valor da Entrada (R$)", value=0.0, step=10000.0, format="%.2f")
-    meses = st.number_input("Prazo (Meses)", value=0, step=12)
+    meses = st.number_input("Prazo (Meses)", value=0, step=420)
 
 # ==========================================
 # 5. PROCESSAMENTO E GERAÇÃO DO EXCEL
