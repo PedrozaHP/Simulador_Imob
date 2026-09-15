@@ -10,14 +10,11 @@ st.set_page_config(page_title="Simulador Imobiliário Profissional", layout="cen
 # ==========================================
 # Sua base de dados de clientes licenciados
 CLIENTES_AUTORIZADOS = {
-    "joao": {
-        "nome": "João Silva - CRECI 12345-SP",
+    "adm": {
+        "nome": "Pedro Pedroza - CRECI 12345-SP",
         "telefone": "(11) 99999-9999"
     },
-    "carlos": {
-        "nome": "Carlos Corretor - CRECI 54321-SP",
-        "telefone": "(11) 98888-8888"
-    }
+    
 }
 
 st.title("🏗️ Simulador Imobiliário Profissional")
