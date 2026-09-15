@@ -20,7 +20,7 @@ CLIENTES_AUTORIZADOS = {
     }
 }
 
-st.title("🔒 Simulador Imobiliário Profissional")
+st.title("🏗️ Simulador Imobiliário Profissional")
 
 # Controlando o estado de login na sessão
 if "email_logado" not in st.session_state:
