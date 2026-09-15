@@ -45,7 +45,7 @@ if st.sidebar.button("Sair / Trocar Conta"):
     st.rerun()
 
 st.markdown("---")
-st.write("Gere simulações de financiamento (Tabela SAC) personalizadas e profissionais com a sua marca.")
+st.write("Gere simulações de financiamento (**Tabela SAC e Tabela Price**) personalizadas e profissionais com a sua marca.")
 
 # ==========================================
 # 4. DADOS DA NEGOCIAÇÃO (Campos Limpos)
@@ -68,29 +68,63 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
     else:
         valor_financiado = valor_imovel - entrada
         taxa_mensal = (taxa_juros / 100) / 12
-        amortizacao = valor_financiado / meses if meses > 0 else 0
-        saldo_devedor = valor_financiado
         
-        # Calculando a tabela SAC
-        dados = []
+        # ------------------------------------------
+        # CÁLCULO TABELA SAC
+        # ------------------------------------------
+        amortizacao_sac = valor_financiado / meses if meses > 0 else 0
+        saldo_devedor_sac = valor_financiado
+        dados_sac = []
         for mes in range(1, meses + 1):
-            juros = saldo_devedor * taxa_mensal
-            prestacao = amortizacao + juros
-            saldo_devedor -= amortizacao
-            dados.append({
+            juros_sac = saldo_devedor_sac * taxa_mensal
+            prestacao_sac = amortizacao_sac + juros_sac
+            saldo_devedor_sac -= amortizacao_sac
+            dados_sac.append({
                 "Mês": mes,
-                "Prestação (R$)": round(prestacao, 2),
-                "Amortização (R$)": round(amortizacao, 2),
-                "Juros (R$)": round(juros, 2),
-                "Saldo Devedor (R$)": round(max(saldo_devedor, 0), 2)
+                "Prestação (R$)": round(prestacao_sac, 2),
+                "Amortização (R$)": round(amortizacao_sac, 2),
+                "Juros (R$)": round(juros_sac, 2),
+                "Saldo Devedor (R$)": round(max(saldo_devedor_sac, 0), 2)
             })
+        df_sac = pd.DataFrame(dados_sac)
+
+        # ------------------------------------------
+        # CÁLCULO TABELA PRICE
+        # ------------------------------------------
+        saldo_devedor_price = valor_financiado
+        if taxa_mensal > 0 and meses > 0:
+            prestacao_price = valor_financiado * (taxa_mensal * (1 + taxa_mensal)**meses) / ((1 + taxa_mensal)**meses - 1)
+        else:
+            prestacao_price = valor_financiado / meses if meses > 0 else 0
             
-        df_sac = pd.DataFrame(dados)
+        dados_price = []
+        for mes in range(1, meses + 1):
+            juros_price = saldo_devedor_price * taxa_mensal
+            amortizacao_price = prestacao_price - juros_price
+            saldo_devedor_price -= amortizacao_price
+            dados_price.append({
+                "Mês": mes,
+                "Prestação (R$)": round(prestacao_price, 2),
+                "Amortização (R$)": round(amortizacao_price, 2),
+                "Juros (R$)": round(juros_price, 2),
+                "Saldo Devedor (R$)": round(max(saldo_devedor_price, 0), 2)
+            })
+        df_price = pd.DataFrame(dados_price)
         
-        st.success("✅ Simulação gerada com sucesso! Veja uma prévia abaixo:")
-        st.dataframe(df_sac.head(5))
+        st.success("✅ Simulações (SAC e Price) geradas com sucesso! Veja as prévias abaixo:")
         
-        # Criando o Excel com Design Profissional (XlsxWriter)
+        # Mostrando abas na tela com as duas opções
+        tab1, tab2 = st.tabs(["📊 Prévia Tabela SAC", "📈 Prévia Tabela Price"])
+        with tab1:
+            st.write(f"1ª Prestação SAC: **R$ {df_sac.iloc[0]['Prestação (R$)']:,.2f}** | Última: **R$ {df_sac.iloc[-1]['Prestação (R$)']:,.2f}**")
+            st.dataframe(df_sac.head(5))
+        with tab2:
+            st.write(f"Prestação Fixa Price: **R$ {df_price.iloc[0]['Prestação (R$)']:,.2f}**")
+            st.dataframe(df_price.head(5))
+        
+        # ------------------------------------------
+        # CRIANDO O EXCEL COM DESIGN PROFISSIONAL (XlsxWriter)
+        # ------------------------------------------
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             workbook = writer.book
@@ -122,7 +156,7 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
             ws_resumo.set_column('A:A', 28)
             ws_resumo.set_column('B:B', 32)
             
-            ws_resumo.write('A1', 'PROPOSTA COMERCIAL & FLUXO', fmt_titulo)
+            ws_resumo.write('A1', 'PROPOSTA COMERCIAL & FLUXO COMPARATIVO', fmt_titulo)
             
             dados_resumo = [
                 ("Corretor Responsável", nome_corretor),
@@ -131,7 +165,9 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
                 ("Valor da Entrada", entrada),
                 ("Valor Financiado", valor_financiado),
                 ("Prazo Total", f"{meses} Meses ({meses//12} Anos)"),
-                ("Taxa de Juros Anual", f"{taxa_juros}% a.a.") # <--- Correção feita aqui de tax_juros para taxa_juros
+                ("Taxa de Juros Anual", f"{taxa_juros}% a.a."),
+                ("1ª Prestação SAC", df_sac.iloc[0]['Prestação (R$)']),
+                ("Prestação Mensal Price", df_price.iloc[0]['Prestação (R$)'])
             ]
             
             linha = 3
@@ -145,7 +181,6 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
 
             # --- ABA 2: FLUXO DE PAGAMENTO SAC ---
             ws_sac = workbook.add_worksheet('Fluxo SAC')
-            
             cabecalhos = ["Mês", "Prestação (R$)", "Amortização (R$)", "Juros (R$)", "Saldo Devedor (R$)"]
             for col_num, cabecalho in enumerate(cabecalhos):
                 ws_sac.write(0, col_num, cabecalho, fmt_cabecalho_tabela)
@@ -153,17 +188,32 @@ if st.button("🚀 Gerar Simulação e Planilha Profissional"):
             ws_sac.set_column('A:A', 10)
             ws_sac.set_column('B:E', 22)
             
-            for row_idx, linha_dados in enumerate(dados, start=1):
+            for row_idx, linha_dados in enumerate(dados_sac, start=1):
                 ws_sac.write(row_idx, 0, linha_dados["Mês"], fmt_celula)
                 ws_sac.write(row_idx, 1, linha_dados["Prestação (R$)"], fmt_moeda)
                 ws_sac.write(row_idx, 2, linha_dados["Amortização (R$)"], fmt_moeda)
-                ws_sac.write(row_idx, 3, linha_dados["Juros (R$)" ], fmt_moeda)
+                ws_sac.write(row_idx, 3, linha_dados["Juros (R$)"], fmt_moeda)
                 ws_sac.write(row_idx, 4, linha_dados["Saldo Devedor (R$)"], fmt_moeda)
+
+            # --- ABA 3: FLUXO DE PAGAMENTO PRICE ---
+            ws_price = workbook.add_worksheet('Fluxo Price')
+            for col_num, cabecalho in enumerate(cabecalhos):
+                ws_price.write(0, col_num, cabecalho, fmt_cabecalho_tabela)
+                
+            ws_price.set_column('A:A', 10)
+            ws_price.set_column('B:E', 22)
+            
+            for row_idx, linha_dados in enumerate(dados_price, start=1):
+                ws_price.write(row_idx, 0, linha_dados["Mês"], fmt_celula)
+                ws_price.write(row_idx, 1, linha_dados["Prestação (R$)"], fmt_moeda)
+                ws_price.write(row_idx, 2, linha_dados["Amortização (R$)"], fmt_moeda)
+                ws_price.write(row_idx, 3, linha_dados["Juros (R$)"], fmt_moeda)
+                ws_price.write(row_idx, 4, linha_dados["Saldo Devedor (R$)"], fmt_moeda)
 
         # Botão de Download
         st.download_button(
-            label="📥 Baixar Planilha Profissional para o Cliente",
+            label="📥 Baixar Planilha Profissional Completa (SAC e Price) para o Cliente",
             data=buffer.getvalue(),
-            file_name="Proposta_Imobiliaria_Profissional.xlsx",
+            file_name="Proposta_Imobiliaria_SAC_Price.xlsx",
             mime="application/vnd.ms-excel"
         )
