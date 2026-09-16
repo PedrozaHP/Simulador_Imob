@@ -111,8 +111,8 @@ with col_obra2:
 if incluir_obra:
     st.info("ℹ️ **Fonte Oficial de Acompanhamento:** App Habitação CAIXA / Portal do Banco.")
 
-# Parcelamento Construtora
-st.markdown("#### 🏢 Parcelamento Direto com a Construtora")
+# Parcelamento Construtora e INCC
+st.markdown("#### 🏢 Parcelamento Direto com a Construtora & Reajuste INCC")
 col_constr_opc1, col_constr_opc2 = st.columns(2)
 with col_constr_opc1:
     usar_construtora = st.checkbox("Parcelar saldo restante direto com a Construtora?")
@@ -121,14 +121,25 @@ with col_constr_opc2:
 
 padrao_meses_construtora = meses_obra_duracao if (incluir_obra and sincronizar_prazos) else 36
 
-meses_construtora = st.number_input(
-    "Prazo das Mensais da Construtora (Meses)", 
-    value=padrao_meses_construtora, 
-    min_value=1, 
-    max_value=120, 
-    step=1, 
-    disabled=not usar_construtora
-)
+col_c1, col_c2 = st.columns(2)
+with col_c1:
+    meses_construtora = st.number_input(
+        "Prazo das Mensais Construtora (Meses)", 
+        value=padrao_meses_construtora, 
+        min_value=1, 
+        max_value=120, 
+        step=1, 
+        disabled=not usar_construtora
+    )
+with col_c2:
+    taxa_incc_estimada = st.number_input(
+        "Estimativa de INCC Mensal (%)", 
+        value=0.50, 
+        step=0.05, 
+        format="%.2f",
+        disabled=not usar_construtora,
+        help="Projeção do reajuste acumulado mês a mês sobre as parcelas da construtora."
+    )
 
 saldo_construtora = 0.0
 prestacao_construtora_mensal = 0.0
@@ -139,7 +150,7 @@ if usar_construtora:
     saldo_construtora = valor_imovel - financiamento_base_input - sinal_efetivo_calculo
     if saldo_construtora < 0: saldo_construtora = 0.0
     prestacao_construtora_mensal = saldo_construtora / meses_construtora if meses_construtora > 0 else 0.0
-    st.info(f"💡 **Saldo Restante com a Construtora:** R$ {saldo_construtora:,.2f} em {meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}.")
+    st.info(f"💡 **Saldo Restante com Construtora:** R$ {saldo_construtora:,.2f} | **Parcela Base Sem INCC:** R$ {prestacao_construtora_mensal:,.2f}/mês.")
 
 # ==========================================
 # 5. PROCESSAMENTO DAS TABELAS SEPARADAS
@@ -150,11 +161,12 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
         st.warning("⚠️ Preencha os valores principais corretamente.")
     else:
         taxa_mensal = (taxa_juros / 100) / 12
+        taxa_incc_dec = taxa_incc_estimada / 100
         is_sac = "SAC" in sistema_amortizacao
         nome_sistema = "Tabela SAC" if is_sac else "Tabela Price"
         
         # ------------------------------------------
-        # TABELA 1: PRÉ-CHAVES (CONSTRUTORA E OBRA)
+        # TABELA 1: PRÉ-CHAVES (CONSTRUTORA E OBRA COM INCC)
         # ------------------------------------------
         dados_construtora = []
         prazo_fase_obras = 0
@@ -165,13 +177,20 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
             
         if prazo_fase_obras > 0:
             for mes in range(1, prazo_fase_obras + 1):
-                parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
+                if usar_construtora and mes <= meses_construtora:
+                    # Cálculo dos Juros Compostos do INCC: (1 + i)^mes
+                    fator_incc = (1 + taxa_incc_dec) ** mes
+                    parc_constr_reajustada = prestacao_construtora_mensal * fator_incc
+                else:
+                    parc_constr_reajustada = 0.0
+                
                 parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
-                total_mes = parc_constr + parc_obra
+                total_mes = parc_constr_reajustada + parc_obra
                 
                 dados_construtora.append({
                     "Mês": mes,
-                    "Parcela Construtora (R$)": round(parc_constr, 2),
+                    "Parcela Base (R$)": round(prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0, 2),
+                    "Parcela c/ INCC (R$)": round(parc_constr_reajustada, 2),
                     "Juros Obra Est. (R$)": round(parc_obra, 2),
                     "Total Mês (R$)": round(total_mes, 2)
                 })
@@ -216,10 +235,10 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
         df_construtora = pd.DataFrame(dados_construtora)
         df_banco = pd.DataFrame(dados_banco)
         
-        st.success("✅ Tabelas de financiamento geradas e separadas com sucesso!")
+        st.success("✅ Tabelas processadas com projeção de INCC!")
         
         # Exibição organizada por Abas no Streamlit
-        tab_construtora, tab_banco = st.tabs(["🏢 Pré-Chaves (Construtora / Obra)", "🏦 Pós-Chaves (Financiamento Bancário)"])
+        tab_construtora, tab_banco = st.tabs(["🏢 Pré-Chaves (Construtora / INCC / Obra)", "🏦 Pós-Chaves (Financiamento Bancário)"])
         
         with tab_construtora:
             if not df_construtora.empty:
@@ -263,10 +282,10 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
             fmt_moeda = workbook.add_format({'num_format': 'R$ #,##0.00', 'align': 'right', 'valign': 'middle', 'border': 1})
             
             ws.set_column('A:A', 15)
-            ws.set_column('B:D', 25)
+            ws.set_column('B:E', 22)
             
             # 1. Resumo Executivo
-            ws.merge_range('A1:D1', 'RESUMO DA PROPOSTA COMERCIAL', fmt_titulo)
+            ws.merge_range('A1:E1', 'RESUMO DA PROPOSTA COMERCIAL', fmt_titulo)
             
             resumo_linhas = [
                 ("Corretor Responsável", nome_corretor),
@@ -280,7 +299,8 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
             
             if usar_construtora:
                 resumo_linhas.append(("Saldo Restante com Construtora", saldo_construtora))
-                resumo_linhas.append(("Prazo Mensais Construtora", f"{meses_construtora} Meses (R$ {prestacao_construtora_mensal:,.2f}/mês)"))
+                resumo_linhas.append(("Prazo Mensais Construtora", f"{meses_construtora} Meses (Base: R$ {prestacao_construtora_mensal:,.2f}/mês)"))
+                resumo_linhas.append(("Projeção INCC Mensal", f"{taxa_incc_estimada:.2f}% a.m. (Acumulativo)"))
             
             resumo_linhas.append(("Sistema Pós-Chaves", nome_sistema))
             
@@ -291,16 +311,16 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
             for rotulo, val in resumo_linhas:
                 ws.write(idx_linha, 0, rotulo, fmt_rotulo)
                 if isinstance(val, (int, float)):
-                    ws.merge_range(idx_linha, 1, idx_linha, 3, val, fmt_valor_dado)
+                    ws.merge_range(idx_linha, 1, idx_linha, 4, val, fmt_valor_dado)
                 else:
-                    ws.merge_range(idx_linha, 1, idx_linha, 3, str(val), fmt_valor_texto)
+                    ws.merge_range(idx_linha, 1, idx_linha, 4, str(val), fmt_valor_texto)
                 idx_linha += 1
                 
             idx_linha += 1
 
-            # 2. Escrever Tabela 1: Construtora (se houver dados)
+            # 2. Escrever Tabela 1: Construtora + INCC (se houver dados)
             if not df_construtora.empty:
-                ws.merge_range(idx_linha, 0, idx_linha, 3, 'FLUXO 1: PRÉ-CHAVES (CONSTRUTORA & OBRA)', fmt_titulo)
+                ws.merge_range(idx_linha, 0, idx_linha, 4, 'FLUXO 1: PRÉ-CHAVES (CONSTRUTORA & REAJUSTE INCC)', fmt_titulo)
                 idx_linha += 1
                 
                 cabecalhos_c = list(df_construtora.columns)
@@ -310,11 +330,12 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
                 for item in dados_construtora:
                     idx_linha += 1
                     ws.write(idx_linha, 0, item["Mês"], fmt_celula)
-                    ws.write(idx_linha, 1, item["Parcela Construtora (R$)"], fmt_moeda)
-                    ws.write(idx_linha, 2, item["Juros Obra Est. (R$)"], fmt_moeda)
-                    ws.write(idx_linha, 3, item["Total Mês (R$)"], fmt_moeda)
+                    ws.write(idx_linha, 1, item["Parcela Base (R$)"], fmt_moeda)
+                    ws.write(idx_linha, 2, item["Parcela c/ INCC (R$)"], fmt_moeda)
+                    ws.write(idx_linha, 3, item["Juros Obra Est. (R$)"], fmt_moeda)
+                    ws.write(idx_linha, 4, item["Total Mês (R$)"], fmt_moeda)
                 
-                idx_linha += 2  # Pula linhas antes do próximo bloco
+                idx_linha += 2
 
             # 3. Escrever Tabela 2: Bancário
             ws.merge_range(idx_linha, 0, idx_linha, 3, f'FLUXO 2: PÓS-CHAVES (BANCO - {nome_sistema.upper()})', fmt_titulo)
@@ -333,8 +354,8 @@ if st.button("🚀 Gerar Proposta Executiva Separada"):
 
         # Botão de Download
         st.download_button(
-            label="📥 Baixar Planilha Executiva Separada (.xlsx)",
+            label="📥 Baixar Planilha Executiva (.xlsx)",
             data=buffer.getvalue(),
-            file_name="Proposta_Comercial_Fluxo_Separado.xlsx",
+            file_name="Proposta_Comercial_Fluxos_INCC.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
