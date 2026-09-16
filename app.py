@@ -76,7 +76,7 @@ with col_fgts2:
 
 fgts_efetivo = valor_fgts if usar_fgts else 0.0
 
-# Opção de Parcelamento com a Construtora (Estilo Vivaz - com teto expandido para 72 meses)
+# Opção de Parcelamento com a Construtora
 col_constr_opc1, col_constr_opc2 = st.columns(2)
 with col_constr_opc1:
     usar_construtora = st.checkbox("Parcelar saldo restante direto com a Construtora?")
@@ -105,7 +105,7 @@ col_obra1, col_obra2 = st.columns(2)
 with col_obra1:
     incluir_obra = st.checkbox("Incluir estimativa de Evolução de Obra?")
 with col_obra2:
-    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=30, min_value=1, max_value=72, step=1, disabled=not incluir_obra)
+    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=36, min_value=1, max_value=72, step=1, disabled=not incluir_obra, help="Geralmente alinhado ao prazo de entrega ou período de obras da construtora.")
     valor_medio_obra = st.number_input("Valor Médio Estimado da Obra/Mês (R$)", value=450.0, step=50.0, format="%.2f", disabled=not incluir_obra)
 
 if incluir_obra:
@@ -124,24 +124,30 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         
         dados_financiamento = []
         
-        # Total de meses da simulação considera o maior período mapeado
-        total_meses_simulacao = max(prazo_banco_meses, meses_construtora if usar_construtora else 0)
+        # O período de obras/pré-chaves considera o maior prazo entre a construtora e a obra ativa
+        prazo_fase_obras = 0
+        if usar_construtora:
+            prazo_fase_obras = max(prazo_fase_obras, meses_construtora)
+        if incluir_obra:
+            prazo_fase_obras = max(prazo_fase_obras, meses_obra_duracao)
+            
+        total_meses_simulacao = prazo_fase_obras + prazo_banco_meses
         
         if is_sac:
             amortizacao_base = valor_financiado_banco / prazo_banco_meses if prazo_banco_meses > 0 else 0
             
             for mes in range(1, total_meses_simulacao + 1):
-                parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
-                parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
-                
-                if usar_construtora and mes <= meses_construtora:
+                if mes <= prazo_fase_obras:
+                    # Fase de Obras / Pré-chaves
+                    parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
+                    parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
+                    
                     prestacao_total = parc_constr + parc_obra
-                    fase_desc = "Fase de Obras (Mensalidade Construtora + Juros Estimados)"
+                    fase_desc = "Fase de Obras (Mensalidade Construtora + Juros de Obra)"
                     amort_mes = 0.0
                 else:
-                    mes_banco = mes - (meses_construtora if usar_construtora else 0)
-                    if mes_banco < 1: mes_banco = 1
-                    
+                    # Pós-Obra / Financiamento Bancário
+                    mes_banco = mes - prazo_fase_obras
                     saldo_parcial = valor_financiado_banco - (amortizacao_base * (mes_banco - 1))
                     if saldo_parcial < 0: saldo_parcial = 0
                     juros_banco = saldo_parcial * taxa_mensal
@@ -164,14 +170,16 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 prestacao_price = valor_financiado_banco / prazo_banco_meses if prazo_banco_meses > 0 else 0
                 
             for mes in range(1, total_meses_simulacao + 1):
-                parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
-                parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
-                
-                if usar_construtora and mes <= meses_construtora:
+                if mes <= prazo_fase_obras:
+                    # Fase de Obras / Pré-chaves
+                    parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
+                    parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
+                    
                     prestacao_total = parc_constr + parc_obra
-                    fase_desc = "Fase de Obras (Mensalidade Construtora + Juros Estimados)"
+                    fase_desc = "Fase de Obras (Mensalidade Construtora + Juros de Obra)"
                     amort_mes = 0.0
                 else:
+                    # Pós-Obra / Financiamento Bancário
                     juros_banco = valor_financiado_banco * taxa_mensal
                     amort_price = prestacao_price - juros_banco
                     prestacao_total = prestacao_price
