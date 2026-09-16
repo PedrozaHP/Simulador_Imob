@@ -76,12 +76,20 @@ with col_fgts2:
 
 fgts_efetivo = valor_fgts if usar_fgts else 0.0
 
-# Opção de Parcelamento com a Construtora (Estilo Vivaz)
+# Opção de Parcelamento com a Construtora (Estilo Vivaz - com teto expandido para 72 meses)
 col_constr_opc1, col_constr_opc2 = st.columns(2)
 with col_constr_opc1:
     usar_construtora = st.checkbox("Parcelar saldo restante direto com a Construtora?")
 with col_constr_opc2:
-    meses_construtora = st.number_input("Prazo das Mensais (Meses)", value=36, min_value=1, max_value=72, step=1, disabled=not usar_construtora)
+    meses_construtora = st.number_input(
+        "Prazo das Mensais da Construtora (Meses)", 
+        value=36, 
+        min_value=1, 
+        max_value=72, 
+        step=1, 
+        disabled=not usar_construtora,
+        help="Permite parcelar em até 72 meses direto com a construtora."
+    )
 
 # Cálculo do saldo com a construtora se a opção estiver ativa
 saldo_construtora = 0.0
@@ -97,7 +105,7 @@ col_obra1, col_obra2 = st.columns(2)
 with col_obra1:
     incluir_obra = st.checkbox("Incluir estimativa de Evolução de Obra?")
 with col_obra2:
-    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=30, min_value=1, max_value=60, step=1, disabled=not incluir_obra)
+    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=30, min_value=1, max_value=72, step=1, disabled=not incluir_obra)
     valor_medio_obra = st.number_input("Valor Médio Estimado da Obra/Mês (R$)", value=450.0, step=50.0, format="%.2f", disabled=not incluir_obra)
 
 if incluir_obra:
@@ -131,7 +139,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                     fase_desc = "Fase de Obras (Mensalidade Construtora + Juros Estimados)"
                     amort_mes = 0.0
                 else:
-                    # Pós-obra ou fluxo direto sem construtora
                     mes_banco = mes - (meses_construtora if usar_construtora else 0)
                     if mes_banco < 1: mes_banco = 1
                     
