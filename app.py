@@ -30,16 +30,14 @@ if not st.session_state.usuario_logado:
     st.stop()
 
 # ==========================================
-# 3. ÁREA LOGADA - DADOS ESTÁTICOS (IMPOSSÍVEL ALTERAR)
+# 3. ÁREA LOGADA - DADOS ESTÁTICOS
 # ==========================================
 dados_usuario = CLIENTES_AUTORIZADOS[st.session_state.usuario_logado]
 
-# Busca segura no dicionário para evitar crash se faltar alguma chave
 nome_corretor = dados_usuario.get("nome", "Não Informado")
 telefone = dados_usuario.get("telefone", "Não Informado")
 creci_corretor = dados_usuario.get("creci", "Não Informado")
 
-# Exibição estática (somente leitura)
 st.sidebar.title("👤 Corretor Licenciado")
 st.sidebar.markdown(f"""
 **Nome:** {nome_corretor}  
@@ -74,7 +72,7 @@ with col2:
 
 taxa_juros = st.number_input("Taxa de Juros Anual do Financiamento (%)", value=9.5, step=0.1, format="%.2f")
 
-# Seção de Condições Especiais da Planta
+# Condições Especiais da Planta
 st.markdown("---")
 st.subheader("💡 Condições Especiais da Planta (Opcionais)")
 
@@ -141,13 +139,13 @@ if usar_construtora:
     saldo_construtora = valor_imovel - financiamento_base_input - sinal_efetivo_calculo
     if saldo_construtora < 0: saldo_construtora = 0.0
     prestacao_construtora_mensal = saldo_construtora / meses_construtora if meses_construtora > 0 else 0.0
-    st.info(f"💡 **Saldo Restante com a Construtora (Calculado):** R$ {saldo_construtora:,.2f} dividido em {meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}.")
+    st.info(f"💡 **Saldo Restante com a Construtora:** R$ {saldo_construtora:,.2f} em {meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}.")
 
 # ==========================================
-# 5. PROCESSAMENTO E GERAÇÃO DA PLANILHA
+# 5. PROCESSAMENTO DAS TABELAS SEPARADAS
 # ==========================================
 st.markdown("---")
-if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
+if st.button("🚀 Gerar Proposta Executiva Separada"):
     if valor_imovel <= 0 or prazo_banco_meses <= 0:
         st.warning("⚠️ Preencha os valores principais corretamente.")
     else:
@@ -155,76 +153,85 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         is_sac = "SAC" in sistema_amortizacao
         nome_sistema = "Tabela SAC" if is_sac else "Tabela Price"
         
-        dados_financiamento = []
+        # ------------------------------------------
+        # TABELA 1: PRÉ-CHAVES (CONSTRUTORA E OBRA)
+        # ------------------------------------------
+        dados_construtora = []
         prazo_fase_obras = 0
         if usar_construtora:
             prazo_fase_obras = max(prazo_fase_obras, meses_construtora)
         if incluir_obra:
             prazo_fase_obras = max(prazo_fase_obras, meses_obra_duracao)
             
-        total_meses_simulacao = prazo_fase_obras + prazo_banco_meses
+        if prazo_fase_obras > 0:
+            for mes in range(1, prazo_fase_obras + 1):
+                parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
+                parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
+                total_mes = parc_constr + parc_obra
+                
+                dados_construtora.append({
+                    "Mês": mes,
+                    "Parcela Construtora (R$)": round(parc_constr, 2),
+                    "Juros Obra Est. (R$)": round(parc_obra, 2),
+                    "Total Mês (R$)": round(total_mes, 2)
+                })
         
+        # ------------------------------------------
+        # TABELA 2: PÓS-CHAVES (BANCO)
+        # ------------------------------------------
+        dados_banco = []
         if is_sac:
             amortizacao_base = valor_financiado_banco / prazo_banco_meses if prazo_banco_meses > 0 else 0
-            
-            for mes in range(1, total_meses_simulacao + 1):
-                if mes <= prazo_fase_obras:
-                    parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
-                    parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
-                    
-                    prestacao_total = parc_constr + parc_obra
-                    fase_desc = "Fase de Obras / Pré-Chaves (Construtora + Juros de Obra)"
-                    amort_mes = 0.0
-                else:
-                    mes_banco = mes - prazo_fase_obras
-                    saldo_parcial = valor_financiado_banco - (amortizacao_base * (mes_banco - 1))
-                    if saldo_parcial < 0: saldo_parcial = 0
-                    juros_banco = saldo_parcial * taxa_mensal
-                    prestacao_total = amortizacao_base + juros_banco
-                    fase_desc = "Pós-Obra / Financiamento Bancário"
-                    amort_mes = amortizacao_base
+            for mes in range(1, prazo_banco_meses + 1):
+                saldo_parcial = valor_financiado_banco - (amortizacao_base * (mes - 1))
+                if saldo_parcial < 0: saldo_parcial = 0
+                juros_banco = saldo_parcial * taxa_mensal
+                prestacao_total = amortizacao_base + juros_banco
                 
-                dados_financiamento.append({
-                    "Mês": mes,
-                    "Fase / Descrição": fase_desc,
-                    "Parcela Total (R$)": round(prestacao_total, 2),
-                    "Amortização (R$)": round(amort_mes, 2)
+                dados_banco.append({
+                    "Mês Bancário": mes,
+                    "Amortização (R$)": round(amortizacao_base, 2),
+                    "Juros (R$)": round(juros_banco, 2),
+                    "Parcela Total (R$)": round(prestacao_total, 2)
                 })
-        else:
+        else: # Price
             if taxa_mensal > 0 and prazo_banco_meses > 0:
                 prestacao_price = valor_financiado_banco * (taxa_mensal * (1 + taxa_mensal)**prazo_banco_meses) / ((1 + taxa_mensal)**prazo_banco_meses - 1)
             else:
                 prestacao_price = valor_financiado_banco / prazo_banco_meses if prazo_banco_meses > 0 else 0
                 
-            for mes in range(1, total_meses_simulacao + 1):
-                if mes <= prazo_fase_obras:
-                    parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
-                    parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
-                    
-                    prestacao_total = parc_constr + parc_obra
-                    fase_desc = "Fase de Obras / Pré-Chaves (Construtora + Juros de Obra)"
-                    amort_mes = 0.0
-                else:
-                    juros_banco = valor_financiado_banco * taxa_mensal
-                    amort_price = prestacao_price - juros_banco
-                    prestacao_total = prestacao_price
-                    fase_desc = "Pós-Obra / Financiamento Bancário"
-                    amort_mes = max(0.0, amort_price)
-                    
-                dados_financiamento.append({
-                    "Mês": mes,
-                    "Fase / Descrição": fase_desc,
-                    "Parcela Total (R$)": round(prestacao_total, 2),
-                    "Amortização (R$)": round(amort_mes, 2)
+            saldo_atual = valor_financiado_banco
+            for mes in range(1, prazo_banco_meses + 1):
+                juros_banco = saldo_atual * taxa_mensal
+                amort_price = prestacao_price - juros_banco
+                saldo_atual -= amort_price
+                
+                dados_banco.append({
+                    "Mês Bancário": mes,
+                    "Amortização (R$)": round(max(0.0, amort_price), 2),
+                    "Juros (R$)": round(juros_banco, 2),
+                    "Parcela Total (R$)": round(prestacao_price, 2)
                 })
 
-        df_cliente = pd.DataFrame(dados_financiamento)
+        df_construtora = pd.DataFrame(dados_construtora)
+        df_banco = pd.DataFrame(dados_banco)
         
-        st.success(f"✅ Proposta gerada com sucesso! Total de parcelas mapeadas: {len(df_cliente)}")
-        st.dataframe(df_cliente, use_container_width=True, height=350)
+        st.success("✅ Tabelas de financiamento geradas e separadas com sucesso!")
         
+        # Exibição organizada por Abas no Streamlit
+        tab_construtora, tab_banco = st.tabs(["🏢 Pré-Chaves (Construtora / Obra)", "🏦 Pós-Chaves (Financiamento Bancário)"])
+        
+        with tab_construtora:
+            if not df_construtora.empty:
+                st.dataframe(df_construtora, use_container_width=True, height=300)
+            else:
+                st.info("Nenhum parcelamento pré-chaves configurado.")
+                
+        with tab_banco:
+            st.dataframe(df_banco, use_container_width=True, height=300)
+
         # ------------------------------------------
-        # GERANDO EXCEL PROFISSIONAL PROTEGIDO
+        # GERANDO EXCEL COM TABELAS EMPILHADAS E PROTEGIDAS
         # ------------------------------------------
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -232,7 +239,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             ws = workbook.add_worksheet('Proposta Comercial')
             ws.hide_gridlines(2)
             
-            # 🔒 BLOQUEIO DA PLANILHA: Exige a senha para desproteger e alterar células
             ws.protect(SENHA_EXCEL)
             
             cor_azul_escuro = "#1F4E78"
@@ -253,19 +259,14 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             fmt_cabecalho_tabela = workbook.add_format({
                 'bold': True, 'font_color': 'white', 'bg_color': '#2F5597', 'align': 'center', 'valign': 'middle', 'border': 1
             })
-            fmt_celula = workbook.add_format({
-                'align': 'center', 'valign': 'middle', 'border': 1
-            })
-            fmt_moeda = workbook.add_format({
-                'num_format': 'R$ #,##0.00', 'align': 'right', 'valign': 'middle', 'border': 1
-            })
+            fmt_celula = workbook.add_format({'align': 'center', 'valign': 'middle', 'border': 1})
+            fmt_moeda = workbook.add_format({'num_format': 'R$ #,##0.00', 'align': 'right', 'valign': 'middle', 'border': 1})
             
-            ws.set_column('A:A', 30)
-            ws.set_column('B:B', 40)
-            ws.set_column('C:D', 20)
+            ws.set_column('A:A', 15)
+            ws.set_column('B:D', 25)
             
-            # Bloco Superior: Resumo Executivo
-            ws.merge_range('A1:D1', 'RESUMO DA PROPOSTA COMERCIAL & FLUXO', fmt_titulo)
+            # 1. Resumo Executivo
+            ws.merge_range('A1:D1', 'RESUMO DA PROPOSTA COMERCIAL', fmt_titulo)
             
             resumo_linhas = [
                 ("Corretor Responsável", nome_corretor),
@@ -278,14 +279,13 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             ]
             
             if usar_construtora:
-                resumo_linhas.append(("Saldo Restante com a Construtora", saldo_construtora))
+                resumo_linhas.append(("Saldo Restante com Construtora", saldo_construtora))
                 resumo_linhas.append(("Prazo Mensais Construtora", f"{meses_construtora} Meses (R$ {prestacao_construtora_mensal:,.2f}/mês)"))
             
             resumo_linhas.append(("Sistema Pós-Chaves", nome_sistema))
             
             if incluir_obra:
                 resumo_linhas.append(("Evolução de Obra (Estimada)", f"R$ {valor_medio_obra:,.2f} / mês por {meses_obra_duracao} meses"))
-                resumo_linhas.append(("Canal Oficial de Acompanhamento", "App Habitação CAIXA / Portal do Banco"))
 
             idx_linha = 2
             for rotulo, val in resumo_linhas:
@@ -297,28 +297,44 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 idx_linha += 1
                 
             idx_linha += 1
-            ws.merge_range(idx_linha, 0, idx_linha, 3, 'FLUXO DETALHADO DE PAGAMENTO', fmt_titulo)
+
+            # 2. Escrever Tabela 1: Construtora (se houver dados)
+            if not df_construtora.empty:
+                ws.merge_range(idx_linha, 0, idx_linha, 3, 'FLUXO 1: PRÉ-CHAVES (CONSTRUTORA & OBRA)', fmt_titulo)
+                idx_linha += 1
+                
+                cabecalhos_c = list(df_construtora.columns)
+                for col_idx, cab in enumerate(cabecalhos_c):
+                    ws.write(idx_linha, col_idx, cab, fmt_cabecalho_tabela)
+                
+                for item in dados_construtora:
+                    idx_linha += 1
+                    ws.write(idx_linha, 0, item["Mês"], fmt_celula)
+                    ws.write(idx_linha, 1, item["Parcela Construtora (R$)"], fmt_moeda)
+                    ws.write(idx_linha, 2, item["Juros Obra Est. (R$)"], fmt_moeda)
+                    ws.write(idx_linha, 3, item["Total Mês (R$)"], fmt_moeda)
+                
+                idx_linha += 2  # Pula linhas antes do próximo bloco
+
+            # 3. Escrever Tabela 2: Bancário
+            ws.merge_range(idx_linha, 0, idx_linha, 3, f'FLUXO 2: PÓS-CHAVES (BANCO - {nome_sistema.upper()})', fmt_titulo)
             idx_linha += 1
             
-            cabecalhos = ["Mês", "Fase / Descrição", "Parcela Total (R$)", "Amortização (R$)"]
-            for col_idx, cab in enumerate(cabecalhos):
+            cabecalhos_b = list(df_banco.columns)
+            for col_idx, cab in enumerate(cabecalhos_b):
                 ws.write(idx_linha, col_idx, cab, fmt_cabecalho_tabela)
             
-            linha_inicio_tabela = idx_linha + 1
-            
-            for item in dados_financiamento:
+            for item in dados_banco:
                 idx_linha += 1
-                ws.write(idx_linha, 0, item["Mês"], fmt_celula)
-                ws.write(idx_linha, 1, item["Fase / Descrição"], fmt_celula)
-                ws.write(idx_linha, 2, item["Parcela Total (R$)"], fmt_moeda)
-                ws.write(idx_linha, 3, item["Amortização (R$)"], fmt_moeda)
-                
-            ws.freeze_panes(linha_inicio_tabela, 0)
+                ws.write(idx_linha, 0, item["Mês Bancário"], fmt_celula)
+                ws.write(idx_linha, 1, item["Amortização (R$)"], fmt_moeda)
+                ws.write(idx_linha, 2, item["Juros (R$)"], fmt_moeda)
+                ws.write(idx_linha, 3, item["Parcela Total (R$)"], fmt_moeda)
 
-        # Botão de Download Atualizado
+        # Botão de Download
         st.download_button(
-            label="📥 Baixar Planilha Executiva Personalizada (.xlsx)",
+            label="📥 Baixar Planilha Executiva Separada (.xlsx)",
             data=buffer.getvalue(),
-            file_name="Proposta_Comercial_Imovel.xlsx",
+            file_name="Proposta_Comercial_Fluxo_Separado.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
