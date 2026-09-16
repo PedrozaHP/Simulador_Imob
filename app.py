@@ -139,7 +139,7 @@ with col_c2:
     )
 
 # Configuração de Parcelas Anuais / Intermediárias
-st.markdown("##### 📅 Parcelas Anuais / Intermediárias (Opcional)")
+st.markdown("##### 📅 Parcelas Anuais / Intermediárias (Substituem a Mensal)")
 col_an1, col_an2, col_an3 = st.columns(3)
 with col_an1:
     usar_anuais = st.checkbox("Incluir Parcelas Anuais?", value=True, disabled=not usar_construtora)
@@ -149,7 +149,7 @@ with col_an2:
 with col_an3:
     valor_anual_unitaria = st.number_input("Valor de cada Anual (R$)", value=5000.0, step=1000.0, format="%.2f", disabled=not usar_anuais or not usar_construtora)
 
-# Cálculos Iniciais do Saldo
+# CÁLCULO DA PARCELA MENSAL REDUZIDA
 saldo_construtora = 0.0
 prestacao_construtora_mensal = 0.0
 total_anuais_val = 0.0
@@ -166,14 +166,21 @@ if usar_construtora:
         if total_anuais_val > saldo_construtora:
             total_anuais_val = saldo_construtora
             st.warning("⚠️ O valor total das anuais ultrapassa o saldo com a construtora. Ajustado ao saldo limite.")
-    
-    saldo_para_mensais = saldo_construtora - total_anuais_val
-    prestacao_construtora_mensal = saldo_para_mensais / meses_construtora if meses_construtora > 0 else 0.0
+        
+        saldo_para_mensais = saldo_construtora - total_anuais_val
+        meses_mensais_efetivas = meses_construtora - num_anuais
+        
+        if meses_mensais_efetivas > 0:
+            prestacao_construtora_mensal = saldo_para_mensais / meses_mensais_efetivas
+        else:
+            prestacao_construtora_mensal = 0.0
+    else:
+        prestacao_construtora_mensal = saldo_construtora / meses_construtora if meses_construtora > 0 else 0.0
     
     st.success(
         f"💡 **Saldo Construtora:** R$ {saldo_construtora:,.2f} | "
-        f"**Mensal Base:** R$ {prestacao_construtora_mensal:,.2f}/mês | "
-        f"**Anuais:** {num_anuais}x de R$ {valor_anual_unitaria:,.2f}" if usar_anuais else f"💡 **Saldo Construtora:** R$ {saldo_construtora:,.2f} | **Mensal Base:** R$ {prestacao_construtora_mensal:,.2f}/mês"
+        f"**Mensal Padrão Reduzida:** R$ {prestacao_construtora_mensal:,.2f}/mês | "
+        f"**Anuais (Substituem a mensal):** {num_anuais}x de R$ {valor_anual_unitaria:,.2f}" if usar_anuais else f"💡 **Saldo Construtora:** R$ {saldo_construtora:,.2f} | **Mensal Base:** R$ {prestacao_construtora_mensal:,.2f}/mês"
     )
 
 # ==========================================
@@ -196,16 +203,21 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
         prazo_loop = meses_obra_duracao if incluir_obra else meses_construtora
         
         for mes in range(1, prazo_loop + 1):
-            # Mensal Construtora
-            parc_mensal_base = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
-            
-            # Anual / Intermediária (Aplica nos meses 12, 24, 36...)
-            parc_anual_mes = 0.0
+            # Identifica se é um mês de Parcela Anual
+            eh_mes_anual = False
             if usar_construtora and usar_anuais:
                 if (mes % 12 == 0) and ((mes // 12) <= num_anuais):
-                    parc_anual_mes = valor_anual_unitaria
+                    eh_mes_anual = True
+
+            # Lógica de substituição: no mês anual, a mensal zera e entra a anual cheia
+            if eh_mes_anual:
+                parc_mensal_base = 0.0
+                parc_anual_mes = valor_anual_unitaria
+            else:
+                parc_mensal_base = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
+                parc_anual_mes = 0.0
             
-            # Estimativa INCC
+            # Estimativa INCC sobre o valor do boleto da construtora naquele mês
             fator_incc = (1 + taxa_incc_dec) ** mes
             base_para_incc = parc_mensal_base + parc_anual_mes
             est_incc_mes = base_para_incc * (fator_incc - 1)
@@ -310,11 +322,10 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
             fmt_celula = workbook.add_format({'align': 'center', 'valign': 'middle', 'border': 1})
             fmt_moeda = workbook.add_format({'num_format': 'R$ #,##0.00', 'align': 'right', 'valign': 'middle', 'border': 1})
             
-            # Larguras ajustadas para 6 colunas (A ate F)
             ws.set_column('A:A', 8)
             ws.set_column('B:F', 22)
             
-            # 1. Resumo Executivo
+            # Resumo Executivo
             ws.merge_range('A1:F1', 'RESUMO DA PROPOSTA COMERCIAL', fmt_titulo)
             
             resumo_linhas = [
@@ -326,8 +337,8 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
                 ("Utilização de FGTS", f"R$ {fgts_efetivo:,.2f} ({destino_fgts})" if usar_fgts else "Não Utilizado"),
                 ("Financiamento Bancário Aprovado", valor_financiado_banco),
                 ("Saldo Restante Construtora", saldo_construtora if usar_construtora else 0.0),
-                ("Parcelas Mensais Construtora", f"{meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}" if usar_construtora else "N/A"),
-                ("Parcelas Anuais Construtora", f"{num_anuais}x de R$ {valor_anual_unitaria:,.2f}" if (usar_construtora and usar_anuais) else "Sem Anuais"),
+                ("Mensais Construtora (Reduzidas)", f"{meses_construtora - num_anuais}x de R$ {prestacao_construtora_mensal:,.2f}" if (usar_construtora and usar_anuais) else f"{meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}"),
+                ("Anuais Construtora (Preço Cheio)", f"{num_anuais}x de R$ {valor_anual_unitaria:,.2f}" if (usar_construtora and usar_anuais) else "Sem Anuais"),
                 ("Estimativa INCC Mensal", f"{taxa_incc_estimada:.2f}% a.m."),
                 ("Taxa Juros Banco (Financiamento)", f"{taxa_juros:.2f}% a.a.")
             ]
@@ -343,7 +354,7 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
                 
             idx_linha += 1
 
-            # 2. Tabela 1: Pré-Chaves Simplificada
+            # Tabela 1: Pré-Chaves Simplificada
             if not df_pre_chaves.empty:
                 ws.merge_range(idx_linha, 0, idx_linha, 5, 'FLUXO DE PAGAMENTO PRÉ-CHAVES (ESTIMATIVAS)', fmt_titulo)
                 idx_linha += 1
@@ -363,7 +374,7 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
                 
                 idx_linha += 2
 
-            # 3. Tabela 2: Bancário Pós-Chaves
+            # Tabela 2: Bancário Pós-Chaves
             ws.merge_range(idx_linha, 0, idx_linha, 3, f'FLUXO PÓS-CHAVES (BANCO - {nome_sistema.upper()})', fmt_titulo)
             idx_linha += 1
             
