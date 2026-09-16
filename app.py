@@ -219,14 +219,14 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         st.success(f"✅ Proposta gerada com sucesso! Total de parcelas mapeadas: {len(df_cliente)}")
         st.dataframe(df_cliente, use_container_width=True, height=350)
         
-        # ------------------------------------------
-        # GERANDO EXCEL PROFISSIONAL (SEM COLUNA DE ANOS)
+      # ------------------------------------------
+        # GERANDO EXCEL PROFISSIONAL (CORRIGIDO)
         # ------------------------------------------
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             workbook = writer.book
             ws = workbook.add_worksheet('Proposta Comercial')
-            ws.hide_gridlines(0)
+            ws.hide_gridlines(2) # 2 para ocultar e mostrar linhas de grade com padrão limpo
             
             cor_azul_escuro = "#1F4E78"
             cor_cinza_claro = "#F2F2F2"
@@ -241,7 +241,7 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 'font_color': '#000000', 'bg_color': cor_cinza_claro, 'border': 1, 'align': 'right', 'valign': 'middle', 'num_format': 'R$ #,##0.00'
             })
             fmt_valor_texto = workbook.add_format({
-                'font_color': '#000000', 'bg_color': cor_cinza_claro, 'border': 1, 'align': 'center', 'valign': 'middle'
+                'font_color': '#000000', 'bg_color': cor_cinza_claro, 'border': 1, 'align': 'left', 'valign': 'middle'
             })
             fmt_cabecalho_tabela = workbook.add_format({
                 'bold': True, 'font_color': 'white', 'bg_color': '#2F5597', 'align': 'center', 'valign': 'middle', 'border': 1
@@ -253,9 +253,9 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 'num_format': 'R$ #,##0.00', 'align': 'right', 'valign': 'middle', 'border': 1
             })
             
-            ws.set_column('A:A', 10)
-            ws.set_column('B:B', 42)
-            ws.set_column('C:D', 24)
+            ws.set_column('A:A', 30)
+            ws.set_column('B:B', 40)
+            ws.set_column('C:D', 20)
             
             # Bloco Superior: Resumo Executivo
             ws.merge_range('A1:D1', 'RESUMO DA PROPOSTA COMERCIAL & FLUXO', fmt_titulo)
@@ -282,11 +282,11 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             idx_linha = 2
             for rotulo, val in resumo_linhas:
                 ws.write(idx_linha, 0, rotulo, fmt_rotulo)
-                ws.merge_range(idx_linha, 1, idx_linha, 3, "", fmt_rotulo)
+                # Mescla as colunas B, C e D para dar espaço ao valor e aplica o formato correto dependendo do tipo
                 if isinstance(val, (int, float)):
-                    ws.write(idx_linha, 1, val, fmt_valor_dado)
+                    ws.merge_range(idx_linha, 1, idx_linha, 3, val, fmt_valor_dado)
                 else:
-                    ws.write(idx_linha, 1, str(val), fmt_valor_texto)
+                    ws.merge_range(idx_linha, 1, idx_linha, 3, str(val), fmt_valor_texto)
                 idx_linha += 1
                 
             idx_linha += 1
@@ -308,10 +308,10 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 
             ws.freeze_panes(linha_inicio_tabela, 0)
 
-        # Botão de Download
+        # Botão de Download Atualizado
         st.download_button(
             label="📥 Baixar Planilha Executiva Personalizada (.xlsx)",
             data=buffer.getvalue(),
             file_name="Proposta_Comercial_Imovel.xlsx",
-            mime="application/vnd.ms-excel"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
