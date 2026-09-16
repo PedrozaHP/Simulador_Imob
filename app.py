@@ -9,6 +9,7 @@ st.set_page_config(page_title="Simulador Imobiliário Profissional", layout="cen
 # 2. SISTEMA DE LOGIN VIA COFRE SEGURO (SECRETS)
 # ==========================================
 CLIENTES_AUTORIZADOS = st.secrets.get("CLIENTES_AUTORIZADOS", {})
+SENHA_EXCEL = st.secrets.get("SENHA_EXCEL", "SenhaMestraProtecao123")
 
 st.title("🏗️ Simulador Imobiliário Profissional")
 
@@ -29,13 +30,23 @@ if not st.session_state.usuario_logado:
     st.stop()
 
 # ==========================================
-# 3. ÁREA LOGADA
+# 3. ÁREA LOGADA - DADOS ESTÁTICOS (IMPOSSÍVEL ALTERAR)
 # ==========================================
 dados_usuario = CLIENTES_AUTORIZADOS[st.session_state.usuario_logado]
-nome_corretor = dados_usuario["nome"]
-telefone = dados_usuario["telefone"]
 
-st.sidebar.success(f"Logado como:\n**{nome_corretor}**")
+# Busca segura no dicionário para evitar crash se faltar alguma chave
+nome_corretor = dados_usuario.get("nome", "Não Informado")
+telefone = dados_usuario.get("telefone", "Não Informado")
+creci_corretor = dados_usuario.get("creci", "Não Informado")
+
+# Exibição estática (somente leitura)
+st.sidebar.title("👤 Corretor Licenciado")
+st.sidebar.markdown(f"""
+**Nome:** {nome_corretor}  
+**CRECI:** {creci_corretor}  
+**Contato:** {telefone}
+""")
+
 if st.sidebar.button("Sair / Trocar Conta"):
     st.session_state.usuario_logado = None
     st.rerun()
@@ -56,8 +67,6 @@ sistema_amortizacao = st.radio(
 col1, col2 = st.columns(2)
 with col1:
     valor_imovel = st.number_input("Valor Total do Imóvel (R$)", value=230000.0, step=10000.0, format="%.2f")
-    
-    # Campo base do financiamento bancário
     financiamento_base_input = st.number_input("Financiamento Bancário Aprovado (R$)", value=150000.0, step=10000.0, format="%.2f")
 with col2:
     sinal_entrada = st.number_input("Valor do Ato / Sinal (R$)", value=15000.0, step=5000.0, format="%.2f")
@@ -65,11 +74,11 @@ with col2:
 
 taxa_juros = st.number_input("Taxa de Juros Anual do Financiamento (%)", value=9.5, step=0.1, format="%.2f")
 
-# Seção de Condições Especiais da Planta (Opcionais)
+# Seção de Condições Especiais da Planta
 st.markdown("---")
 st.subheader("💡 Condições Especiais da Planta (Opcionais)")
 
-# Opção de FGTS com destino inteligente
+# FGTS
 col_fgts1, col_fgts2 = st.columns(2)
 with col_fgts1:
     usar_fgts = st.checkbox("Cliente vai utilizar FGTS?")
@@ -87,14 +96,13 @@ if usar_fgts:
         horizontal=True
     )
     
-    # Se escolheu somar ao financiamento, o valor total financiado pelo banco engloba o FGTS
     if "Somar ao Financiamento" in destino_fgts:
         valor_financiado_banco = financiamento_base_input + fgts_efetivo
         st.info(f"ℹ️ **Efeito do FGTS:** Somado ao crédito. Financiamento Bancário Efetivo ajustado para **R$ {valor_financiado_banco:,.2f}**.")
     else:
-        st.info(f"ℹ️ **Efeito do FGTS:** Abatido do sinal/entrada, aliviando o bolso do cliente no ato.")
+        st.info("ℹ️ **Efeito do FGTS:** Abatido do sinal/entrada, aliviando o bolso do cliente no ato.")
 
-# Opção de Evolução de Obra
+# Evolução de Obra
 col_obra1, col_obra2 = st.columns(2)
 with col_obra1:
     incluir_obra = st.checkbox("Incluir estimativa de Evolução de Obra?")
@@ -105,7 +113,7 @@ with col_obra2:
 if incluir_obra:
     st.info("ℹ️ **Fonte Oficial de Acompanhamento:** App Habitação CAIXA / Portal do Banco.")
 
-# Opção de Parcelamento com a Construtora
+# Parcelamento Construtora
 st.markdown("#### 🏢 Parcelamento Direto com a Construtora")
 col_constr_opc1, col_constr_opc2 = st.columns(2)
 with col_constr_opc1:
@@ -124,9 +132,6 @@ meses_construtora = st.number_input(
     disabled=not usar_construtora
 )
 
-# Cálculo do saldo com a construtora
-# Nota: Se o FGTS foi usado para abater a entrada, ele reduz o valor que o cliente precisa dar no ato.
-# A construtoras calculam o saldo devedor abatendo: Valor Imóvel - Financiamento - Sinal - (FGTS se abateu entrada).
 saldo_construtora = 0.0
 prestacao_construtora_mensal = 0.0
 if usar_construtora:
@@ -139,7 +144,7 @@ if usar_construtora:
     st.info(f"💡 **Saldo Restante com a Construtora (Calculado):** R$ {saldo_construtora:,.2f} dividido em {meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}.")
 
 # ==========================================
-# 5. PROCESSAMENTO DO FLUXO (SEM ANOS, APENAS MESES)
+# 5. PROCESSAMENTO E GERAÇÃO DA PLANILHA
 # ==========================================
 st.markdown("---")
 if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
@@ -151,7 +156,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         nome_sistema = "Tabela SAC" if is_sac else "Tabela Price"
         
         dados_financiamento = []
-        
         prazo_fase_obras = 0
         if usar_construtora:
             prazo_fase_obras = max(prazo_fase_obras, meses_construtora)
@@ -219,14 +223,17 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         st.success(f"✅ Proposta gerada com sucesso! Total de parcelas mapeadas: {len(df_cliente)}")
         st.dataframe(df_cliente, use_container_width=True, height=350)
         
-      # ------------------------------------------
-        # GERANDO EXCEL PROFISSIONAL (CORRIGIDO)
+        # ------------------------------------------
+        # GERANDO EXCEL PROFISSIONAL PROTEGIDO
         # ------------------------------------------
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             workbook = writer.book
             ws = workbook.add_worksheet('Proposta Comercial')
-            ws.hide_gridlines(2) # 2 para ocultar e mostrar linhas de grade com padrão limpo
+            ws.hide_gridlines(2)
+            
+            # 🔒 BLOQUEIO DA PLANILHA: Exige a senha para desproteger e alterar células
+            ws.protect(SENHA_EXCEL)
             
             cor_azul_escuro = "#1F4E78"
             cor_cinza_claro = "#F2F2F2"
@@ -262,6 +269,7 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             
             resumo_linhas = [
                 ("Corretor Responsável", nome_corretor),
+                ("CRECI", creci_corretor),
                 ("Contato WhatsApp", telefone),
                 ("Valor Total do Imóvel", valor_imovel),
                 ("Sinal / Entrada", sinal_entrada),
@@ -282,7 +290,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             idx_linha = 2
             for rotulo, val in resumo_linhas:
                 ws.write(idx_linha, 0, rotulo, fmt_rotulo)
-                # Mescla as colunas B, C e D para dar espaço ao valor e aplica o formato correto dependendo do tipo
                 if isinstance(val, (int, float)):
                     ws.merge_range(idx_linha, 1, idx_linha, 3, val, fmt_valor_dado)
                 else:
