@@ -3,7 +3,7 @@ import pandas as pd
 import io
 
 # 1. Configuração da página
-st.set_page_config(page_title="Simulador Imobiliário Profissional", layout="wide")
+st.set_page_config(page_title="Simulador Imobiliário Simplificado", layout="wide")
 
 # ==========================================
 # 2. SISTEMA DE LOGIN VIA COFRE SEGURO (SECRETS)
@@ -11,7 +11,7 @@ st.set_page_config(page_title="Simulador Imobiliário Profissional", layout="wid
 CLIENTES_AUTORIZADOS = st.secrets.get("CLIENTES_AUTORIZADOS", {})
 SENHA_EXCEL = st.secrets.get("SENHA_EXCEL", "SenhaMestraProtecao123")
 
-st.title("🏗️ Simulador Imobiliário Profissional")
+st.title("🏗️ Simulador Imobiliário - Proposta Comercial")
 
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
@@ -74,9 +74,8 @@ taxa_juros = st.number_input("Taxa de Juros Anual do Financiamento (%)", value=9
 
 # Condições Especiais da Planta
 st.markdown("---")
-st.subheader("💡 Condições Especiais da Planta")
+st.subheader("💡 Entrada & FGTS")
 
-# FGTS
 col_fgts1, col_fgts2 = st.columns(2)
 with col_fgts1:
     usar_fgts = st.checkbox("Cliente vai utilizar FGTS?")
@@ -100,45 +99,21 @@ if usar_fgts:
     else:
         st.info("ℹ️ **Efeito do FGTS:** Abatido do sinal/entrada, aliviando o bolso do cliente no ato.")
 
-# Evolução de Obra & Banco
-st.markdown("#### 🏦 Evolução de Obra (Estimativa Banco)")
-col_obra1, col_obra2 = st.columns(2)
-with col_obra1:
-    incluir_obra = st.checkbox("Incluir Estimativa de Evolução de Obra?", value=True)
-with col_obra2:
-    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=36, min_value=1, max_value=72, step=1, disabled=not incluir_obra)
-
-# Parcelamento Construtora, Anuais e INCC
-st.markdown("#### 🏢 Parcelamento Construtora, Anuais & INCC")
-col_constr_opc1, col_constr_opc2 = st.columns(2)
-with col_constr_opc1:
-    usar_construtora = st.checkbox("Parcelar saldo restante direto com a Construtora?", value=True)
-with col_constr_opc2:
-    sincronizar_prazos = st.checkbox("Igualar prazo da Construtora ao prazo da Obra", value=True, disabled=not usar_construtora or not incluir_obra)
-
-padrao_meses_construtora = meses_obra_duracao if (incluir_obra and sincronizar_prazos) else 36
-
+# Parcelamento Construtora e Anuais
+st.markdown("#### 🏢 Parcelamento Direto com a Construtora")
 col_c1, col_c2 = st.columns(2)
 with col_c1:
+    usar_construtora = st.checkbox("Parcelar saldo restante direto com a Construtora?", value=True)
+with col_c2:
     meses_construtora = st.number_input(
-        "Prazo das Mensais Construtora (Meses)", 
-        value=padrao_meses_construtora, 
+        "Prazo do Parcelamento (Meses)", 
+        value=36, 
         min_value=1, 
         max_value=120, 
         step=1, 
         disabled=not usar_construtora
     )
-with col_c2:
-    taxa_incc_estimada = st.number_input(
-        "Estimativa de INCC Mensal (%)", 
-        value=0.50, 
-        step=0.05, 
-        format="%.2f",
-        disabled=not usar_construtora,
-        help="Projeção média mensal do reajuste de INCC."
-    )
 
-# Configuração de Parcelas Anuais / Intermediárias
 st.markdown("##### 📅 Parcelas Anuais / Intermediárias (Substituem a Mensal)")
 col_an1, col_an2, col_an3 = st.columns(3)
 with col_an1:
@@ -179,7 +154,7 @@ if usar_construtora:
     
     st.success(
         f"💡 **Saldo Construtora:** R$ {saldo_construtora:,.2f} | "
-        f"**Mensal Padrão Reduzida:** R$ {prestacao_construtora_mensal:,.2f}/mês | "
+        f"**Mensal Padrão:** R$ {prestacao_construtora_mensal:,.2f}/mês | "
         f"**Anuais (Substituem a mensal):** {num_anuais}x de R$ {valor_anual_unitaria:,.2f}" if usar_anuais else f"💡 **Saldo Construtora:** R$ {saldo_construtora:,.2f} | **Mensal Base:** R$ {prestacao_construtora_mensal:,.2f}/mês"
     )
 
@@ -187,56 +162,38 @@ if usar_construtora:
 # 5. PROCESSAMENTO DA TABELA COMERCIAL
 # ==========================================
 st.markdown("---")
-if st.button("🚀 Gerar Proposta Comercial Simplificada"):
+if st.button("🚀 Gerar Proposta Comercial"):
     if valor_imovel <= 0 or prazo_banco_meses <= 0:
         st.warning("⚠️ Preencha os valores principais corretamente.")
     else:
         taxa_mensal_banco = (taxa_juros / 100) / 12
-        taxa_incc_dec = taxa_incc_estimada / 100
         is_sac = "SAC" in sistema_amortizacao
         nome_sistema = "Tabela SAC" if is_sac else "Tabela Price"
         
         # ------------------------------------------
-        # TABELA 1: FLUXO PRÉ-CHAVES SIMPLIFICADO
+        # TABELA 1: FLUXO PRÉ-CHAVES LIMPO
         # ------------------------------------------
         dados_pre_chaves = []
-        prazo_loop = meses_obra_duracao if incluir_obra else meses_construtora
         
-        for mes in range(1, prazo_loop + 1):
-            # Identifica se é um mês de Parcela Anual
+        for mes in range(1, meses_construtora + 1):
             eh_mes_anual = False
             if usar_construtora and usar_anuais:
                 if (mes % 12 == 0) and ((mes // 12) <= num_anuais):
                     eh_mes_anual = True
 
-            # Lógica de substituição: no mês anual, a mensal zera e entra a anual cheia
             if eh_mes_anual:
                 parc_mensal_base = 0.0
                 parc_anual_mes = valor_anual_unitaria
             else:
-                parc_mensal_base = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
+                parc_mensal_base = prestacao_construtora_mensal if usar_construtora else 0.0
                 parc_anual_mes = 0.0
             
-            # Estimativa INCC sobre o valor do boleto da construtora naquele mês
-            fator_incc = (1 + taxa_incc_dec) ** mes
-            base_para_incc = parc_mensal_base + parc_anual_mes
-            est_incc_mes = base_para_incc * (fator_incc - 1)
-            
-            # Estimativa Evolução de Obra (Banco)
-            est_obra_mes = 0.0
-            if incluir_obra:
-                pct_avanco = mes / prazo_loop
-                saldo_fin_corrigido = valor_financiado_banco * fator_incc
-                est_obra_mes = (saldo_fin_corrigido * pct_avanco) * taxa_mensal_banco
-            
-            total_desembolso = parc_mensal_base + parc_anual_mes + est_incc_mes + est_obra_mes
+            total_desembolso = parc_mensal_base + parc_anual_mes
             
             dados_pre_chaves.append({
                 "Mês": mes,
                 "Mensal Construtora (R$)": round(parc_mensal_base, 2),
                 "Anual / Intermediária (R$)": round(parc_anual_mes, 2),
-                "Est. INCC (R$)": round(est_incc_mes, 2),
-                "Est. Obra Banco (R$)": round(est_obra_mes, 2),
                 "Total Mês (R$)": round(total_desembolso, 2)
             })
         
@@ -283,7 +240,7 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
         st.success("✅ Proposta Comercial gerada com sucesso!")
         
         # Exibição por Abas
-        tab_pre, tab_pos = st.tabs(["🏗️ Fluxo Pré-Chaves (Comercial Simplificado)", "🏦 Pós-Chaves (Financiamento Bancário)"])
+        tab_pre, tab_pos = st.tabs(["🏗️ Fluxo de Pagamento (Pré-Chaves)", "🏦 Financiamento Bancário (Pós-Chaves)"])
         
         with tab_pre:
             st.dataframe(df_pre_chaves, use_container_width=True, height=400)
@@ -292,7 +249,7 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
             st.dataframe(df_banco, use_container_width=True, height=400)
 
         # ------------------------------------------
-        # GERANDO EXCEL LIMPO E COMERCIAL
+        # GERANDO EXCEL LIMPO
         # ------------------------------------------
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -322,11 +279,12 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
             fmt_celula = workbook.add_format({'align': 'center', 'valign': 'middle', 'border': 1})
             fmt_moeda = workbook.add_format({'num_format': 'R$ #,##0.00', 'align': 'right', 'valign': 'middle', 'border': 1})
             
+            # Larguras ajustadas para 4 colunas (A ate D)
             ws.set_column('A:A', 8)
-            ws.set_column('B:F', 22)
+            ws.set_column('B:D', 24)
             
             # Resumo Executivo
-            ws.merge_range('A1:F1', 'RESUMO DA PROPOSTA COMERCIAL', fmt_titulo)
+            ws.merge_range('A1:D1', 'RESUMO DA PROPOSTA COMERCIAL', fmt_titulo)
             
             resumo_linhas = [
                 ("Corretor Responsável", nome_corretor),
@@ -336,10 +294,9 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
                 ("Sinal / Entrada", sinal_entrada),
                 ("Utilização de FGTS", f"R$ {fgts_efetivo:,.2f} ({destino_fgts})" if usar_fgts else "Não Utilizado"),
                 ("Financiamento Bancário Aprovado", valor_financiado_banco),
-                ("Saldo Restante Construtora", saldo_construtora if usar_construtora else 0.0),
-                ("Mensais Construtora (Reduzidas)", f"{meses_construtora - num_anuais}x de R$ {prestacao_construtora_mensal:,.2f}" if (usar_construtora and usar_anuais) else f"{meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}"),
-                ("Anuais Construtora (Preço Cheio)", f"{num_anuais}x de R$ {valor_anual_unitaria:,.2f}" if (usar_construtora and usar_anuais) else "Sem Anuais"),
-                ("Estimativa INCC Mensal", f"{taxa_incc_estimada:.2f}% a.m."),
+                ("Saldo Construtora", saldo_construtora if usar_construtora else 0.0),
+                ("Mensais Construtora", f"{meses_construtora - num_anuais}x de R$ {prestacao_construtora_mensal:,.2f}" if (usar_construtora and usar_anuais) else f"{meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}"),
+                ("Anuais Construtora", f"{num_anuais}x de R$ {valor_anual_unitaria:,.2f}" if (usar_construtora and usar_anuais) else "Sem Anuais"),
                 ("Taxa Juros Banco (Financiamento)", f"{taxa_juros:.2f}% a.a.")
             ]
 
@@ -347,16 +304,16 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
             for rotulo, val in resumo_linhas:
                 ws.write(idx_linha, 0, rotulo, fmt_rotulo)
                 if isinstance(val, (int, float)):
-                    ws.merge_range(idx_linha, 1, idx_linha, 5, val, fmt_valor_dado)
+                    ws.merge_range(idx_linha, 1, idx_linha, 3, val, fmt_valor_dado)
                 else:
-                    ws.merge_range(idx_linha, 1, idx_linha, 5, str(val), fmt_valor_texto)
+                    ws.merge_range(idx_linha, 1, idx_linha, 3, str(val), fmt_valor_texto)
                 idx_linha += 1
                 
             idx_linha += 1
 
             # Tabela 1: Pré-Chaves Simplificada
             if not df_pre_chaves.empty:
-                ws.merge_range(idx_linha, 0, idx_linha, 5, 'FLUXO DE PAGAMENTO PRÉ-CHAVES (ESTIMATIVAS)', fmt_titulo)
+                ws.merge_range(idx_linha, 0, idx_linha, 3, 'FLUXO DE PAGAMENTO PRÉ-CHAVES', fmt_titulo)
                 idx_linha += 1
                 
                 cabecalhos_c = list(df_pre_chaves.columns)
@@ -368,9 +325,7 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
                     ws.write(idx_linha, 0, item["Mês"], fmt_celula)
                     ws.write(idx_linha, 1, item["Mensal Construtora (R$)"], fmt_moeda)
                     ws.write(idx_linha, 2, item["Anual / Intermediária (R$)"], fmt_moeda)
-                    ws.write(idx_linha, 3, item["Est. INCC (R$)"], fmt_moeda)
-                    ws.write(idx_linha, 4, item["Est. Obra Banco (R$)"], fmt_moeda)
-                    ws.write(idx_linha, 5, item["Total Mês (R$)"], fmt_moeda)
+                    ws.write(idx_linha, 3, item["Total Mês (R$)"], fmt_moeda)
                 
                 idx_linha += 2
 
@@ -393,6 +348,6 @@ if st.button("🚀 Gerar Proposta Comercial Simplificada"):
         st.download_button(
             label="📥 Baixar Proposta Comercial (.xlsx)",
             data=buffer.getvalue(),
-            file_name="Proposta_Comercial_Planta.xlsx",
+            file_name="Proposta_Comercial_Simplificada.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
