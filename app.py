@@ -76,20 +76,38 @@ with col_fgts2:
 
 fgts_efetivo = valor_fgts if usar_fgts else 0.0
 
+# Opção de Evolução de Obra (Definimos primeiro para permitir sincronização inteligente)
+col_obra1, col_obra2 = st.columns(2)
+with col_obra1:
+    incluir_obra = st.checkbox("Incluir estimativa de Evolução de Obra?")
+with col_obra2:
+    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=36, min_value=1, max_value=72, step=1, disabled=not incluir_obra, help="Prazo de construção ou entrega.")
+    valor_medio_obra = st.number_input("Valor Médio Estimado da Obra/Mês (R$)", value=450.0, step=50.0, format="%.2f", disabled=not incluir_obra)
+
+if incluir_obra:
+    st.info("ℹ️ **Fonte Oficial de Acompanhamento:** Durante a construção, os valores da evolução de obra podem ser monitorados de forma oficial pelo **App Habitação CAIXA** ou portal do banco financiador.")
+
 # Opção de Parcelamento com a Construtora
+st.markdown("#### 🏢 Parcelamento Direto com a Construtora")
 col_constr_opc1, col_constr_opc2 = st.columns(2)
 with col_constr_opc1:
     usar_construtora = st.checkbox("Parcelar saldo restante direto com a Construtora?")
 with col_constr_opc2:
-    meses_construtora = st.number_input(
-        "Prazo das Mensais da Construtora (Meses)", 
-        value=36, 
-        min_value=1, 
-        max_value=72, 
-        step=1, 
-        disabled=not usar_construtora,
-        help="Permite parcelar em até 72 meses direto com a construtora."
-    )
+    # Botão auxiliar para sincronizar o prazo da construtora com a obra com 1 clique
+    sincronizar_prazos = st.checkbox("Igualar prazo da Construtora ao prazo da Obra", value=True, disabled=not usar_construtora or not incluir_obra)
+
+# Define o valor padrão dos meses da construtora com base na sincronização ou liberdade total
+padrao_meses_construtora = meses_obra_duracao if (incluir_obra and sincronizar_prazos) else 36
+
+meses_construtora = st.number_input(
+    "Prazo das Mensais da Construtora (Meses)", 
+    value=padrao_meses_construtora, 
+    min_value=1, 
+    max_value=120, 
+    step=1, 
+    disabled=not usar_construtora,
+    help="Até 72+ meses. Se sincronizado, acompanha o término da obra."
+)
 
 # Cálculo do saldo com a construtora se a opção estiver ativa
 saldo_construtora = 0.0
@@ -100,20 +118,10 @@ if usar_construtora:
     prestacao_construtora_mensal = saldo_construtora / meses_construtora if meses_construtora > 0 else 0.0
     st.info(f"💡 **Saldo Restante com a Construtora (Calculado):** R$ {saldo_construtora:,.2f} dividido em {meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}.")
 
-# Opção de Evolução de Obra
-col_obra1, col_obra2 = st.columns(2)
-with col_obra1:
-    incluir_obra = st.checkbox("Incluir estimativa de Evolução de Obra?")
-with col_obra2:
-    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=36, min_value=1, max_value=72, step=1, disabled=not incluir_obra, help="Geralmente alinhado ao prazo de entrega ou período de obras da construtora.")
-    valor_medio_obra = st.number_input("Valor Médio Estimado da Obra/Mês (R$)", value=450.0, step=50.0, format="%.2f", disabled=not incluir_obra)
-
-if incluir_obra:
-    st.info("ℹ️ **Fonte Oficial de Acompanhamento:** Durante a construção, os valores da evolução de obra podem ser monitorados de forma oficial pelo **App Habitação CAIXA** ou portal do banco financiador.")
-
 # ==========================================
 # 5. PROCESSAMENTO DO FLUXO
 # ==========================================
+st.markdown("---")
 if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
     if valor_imovel <= 0 or prazo_banco_meses <= 0:
         st.warning("⚠️ Preencha os valores principais corretamente.")
@@ -124,7 +132,7 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         
         dados_financiamento = []
         
-        # O período de obras/pré-chaves considera o maior prazo entre a construtora e a obra ativa
+        # O período total da simulação considera o maior prazo envolvido (construtora ou obra) + prazo do banco
         prazo_fase_obras = 0
         if usar_construtora:
             prazo_fase_obras = max(prazo_fase_obras, meses_construtora)
@@ -138,12 +146,12 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             
             for mes in range(1, total_meses_simulacao + 1):
                 if mes <= prazo_fase_obras:
-                    # Fase de Obras / Pré-chaves
+                    # Fase de Obras / Pré-chaves / Saldos intermediários
                     parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
                     parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
                     
                     prestacao_total = parc_constr + parc_obra
-                    fase_desc = "Fase de Obras (Mensalidade Construtora + Juros de Obra)"
+                    fase_desc = "Fase de Obras / Pré-Chaves (Construtora + Juros de Obra)"
                     amort_mes = 0.0
                 else:
                     # Pós-Obra / Financiamento Bancário
@@ -171,12 +179,12 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 
             for mes in range(1, total_meses_simulacao + 1):
                 if mes <= prazo_fase_obras:
-                    # Fase de Obras / Pré-chaves
+                    # Fase de Obras / Pré-chaves / Saldos intermediários
                     parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
                     parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
                     
                     prestacao_total = parc_constr + parc_obra
-                    fase_desc = "Fase de Obras (Mensalidade Construtora + Juros de Obra)"
+                    fase_desc = "Fase de Obras / Pré-Chaves (Construtora + Juros de Obra)"
                     amort_mes = 0.0
                 else:
                     # Pós-Obra / Financiamento Bancário
