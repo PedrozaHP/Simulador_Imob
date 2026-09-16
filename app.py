@@ -55,10 +55,12 @@ sistema_amortizacao = st.radio(
 
 col1, col2 = st.columns(2)
 with col1:
-    valor_imovel = st.number_input("Valor Total do Imóvel (R$)", value=200000.0, step=10000.0, format="%.2f")
-    valor_financiado_banco = st.number_input("Financiamento Bancário Aprovado (R$)", value=120000.0, step=10000.0, format="%.2f")
+    valor_imovel = st.number_input("Valor Total do Imóvel (R$)", value=230000.0, step=10000.0, format="%.2f")
+    
+    # Campo base do financiamento bancário
+    financiamento_base_input = st.number_input("Financiamento Bancário Aprovado (R$)", value=150000.0, step=10000.0, format="%.2f")
 with col2:
-    sinal_entrada = st.number_input("Valor do Ato / Sinal (R$)", value=10000.0, step=5000.0, format="%.2f")
+    sinal_entrada = st.number_input("Valor do Ato / Sinal (R$)", value=15000.0, step=5000.0, format="%.2f")
     prazo_banco_meses = st.number_input("Prazo do Financiamento Bancário (Meses)", value=360, min_value=1, max_value=420, step=1)
 
 taxa_juros = st.number_input("Taxa de Juros Anual do Financiamento (%)", value=9.5, step=0.1, format="%.2f")
@@ -67,7 +69,7 @@ taxa_juros = st.number_input("Taxa de Juros Anual do Financiamento (%)", value=9
 st.markdown("---")
 st.subheader("💡 Condições Especiais da Planta (Opcionais)")
 
-# Opção de FGTS
+# Opção de FGTS com destino inteligente
 col_fgts1, col_fgts2 = st.columns(2)
 with col_fgts1:
     usar_fgts = st.checkbox("Cliente vai utilizar FGTS?")
@@ -75,17 +77,33 @@ with col_fgts2:
     valor_fgts = st.number_input("Valor do FGTS (R$)", value=15000.0, step=5000.0, format="%.2f", disabled=not usar_fgts)
 
 fgts_efetivo = valor_fgts if usar_fgts else 0.0
+destino_fgts = "Abater do Sinal / Entrada"
+valor_financiado_banco = financiamento_base_input
 
-# Opção de Evolução de Obra (Definimos primeiro para permitir sincronização inteligente)
+if usar_fgts:
+    destino_fgts = st.radio(
+        "Como o FGTS será utilizado na composição?",
+        ["Abater do Sinal / Entrada (Recursos Próprios)", "Somar ao Financiamento / Aumentar Crédito com o Banco"],
+        horizontal=True
+    )
+    
+    # Se escolheu somar ao financiamento, o valor total financiado pelo banco engloba o FGTS
+    if "Somar ao Financiamento" in destino_fgts:
+        valor_financiado_banco = financiamento_base_input + fgts_efetivo
+        st.info(f"ℹ️ **Efeito do FGTS:** Somado ao crédito. Financiamento Bancário Efetivo ajustado para **R$ {valor_financiado_banco:,.2f}**.")
+    else:
+        st.info(f"ℹ️ **Efeito do FGTS:** Abatido do sinal/entrada, aliviando o bolso do cliente no ato.")
+
+# Opção de Evolução de Obra
 col_obra1, col_obra2 = st.columns(2)
 with col_obra1:
     incluir_obra = st.checkbox("Incluir estimativa de Evolução de Obra?")
 with col_obra2:
-    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=36, min_value=1, max_value=72, step=1, disabled=not incluir_obra, help="Prazo de construção ou entrega.")
+    meses_obra_duracao = st.number_input("Duração da Obra (Meses)", value=36, min_value=1, max_value=72, step=1, disabled=not incluir_obra)
     valor_medio_obra = st.number_input("Valor Médio Estimado da Obra/Mês (R$)", value=450.0, step=50.0, format="%.2f", disabled=not incluir_obra)
 
 if incluir_obra:
-    st.info("ℹ️ **Fonte Oficial de Acompanhamento:** Durante a construção, os valores da evolução de obra podem ser monitorados de forma oficial pelo **App Habitação CAIXA** ou portal do banco financiador.")
+    st.info("ℹ️ **Fonte Oficial de Acompanhamento:** App Habitação CAIXA / Portal do Banco.")
 
 # Opção de Parcelamento com a Construtora
 st.markdown("#### 🏢 Parcelamento Direto com a Construtora")
@@ -93,10 +111,8 @@ col_constr_opc1, col_constr_opc2 = st.columns(2)
 with col_constr_opc1:
     usar_construtora = st.checkbox("Parcelar saldo restante direto com a Construtora?")
 with col_constr_opc2:
-    # Botão auxiliar para sincronizar o prazo da construtora com a obra com 1 clique
     sincronizar_prazos = st.checkbox("Igualar prazo da Construtora ao prazo da Obra", value=True, disabled=not usar_construtora or not incluir_obra)
 
-# Define o valor padrão dos meses da construtora com base na sincronização ou liberdade total
 padrao_meses_construtora = meses_obra_duracao if (incluir_obra and sincronizar_prazos) else 36
 
 meses_construtora = st.number_input(
@@ -105,21 +121,25 @@ meses_construtora = st.number_input(
     min_value=1, 
     max_value=120, 
     step=1, 
-    disabled=not usar_construtora,
-    help="Até 72+ meses. Se sincronizado, acompanha o término da obra."
+    disabled=not usar_construtora
 )
 
-# Cálculo do saldo com a construtora se a opção estiver ativa
+# Cálculo do saldo com a construtora
+# Nota: Se o FGTS foi usado para abater a entrada, ele reduz o valor que o cliente precisa dar no ato.
+# A construtoras calculam o saldo devedor abatendo: Valor Imóvel - Financiamento - Sinal - (FGTS se abateu entrada).
 saldo_construtora = 0.0
 prestacao_construtora_mensal = 0.0
 if usar_construtora:
-    saldo_construtora = valor_imovel - valor_financiado_banco - sinal_entrada - fgts_efetivo
+    abatimento_entrada_fgts = fgts_efetivo if ("Abater do Sinal" in destino_fgts) else 0.0
+    sinal_efetivo_calculo = sinal_entrada + abatimento_entrada_fgts
+    
+    saldo_construtora = valor_imovel - financiamento_base_input - sinal_efetivo_calculo
     if saldo_construtora < 0: saldo_construtora = 0.0
     prestacao_construtora_mensal = saldo_construtora / meses_construtora if meses_construtora > 0 else 0.0
     st.info(f"💡 **Saldo Restante com a Construtora (Calculado):** R$ {saldo_construtora:,.2f} dividido em {meses_construtora}x de R$ {prestacao_construtora_mensal:,.2f}.")
 
 # ==========================================
-# 5. PROCESSAMENTO DO FLUXO
+# 5. PROCESSAMENTO DO FLUXO (SEM ANOS, APENAS MESES)
 # ==========================================
 st.markdown("---")
 if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
@@ -132,7 +152,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         
         dados_financiamento = []
         
-        # O período total da simulação considera o maior prazo envolvido (construtora ou obra) + prazo do banco
         prazo_fase_obras = 0
         if usar_construtora:
             prazo_fase_obras = max(prazo_fase_obras, meses_construtora)
@@ -146,7 +165,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             
             for mes in range(1, total_meses_simulacao + 1):
                 if mes <= prazo_fase_obras:
-                    # Fase de Obras / Pré-chaves / Saldos intermediários
                     parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
                     parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
                     
@@ -154,7 +172,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                     fase_desc = "Fase de Obras / Pré-Chaves (Construtora + Juros de Obra)"
                     amort_mes = 0.0
                 else:
-                    # Pós-Obra / Financiamento Bancário
                     mes_banco = mes - prazo_fase_obras
                     saldo_parcial = valor_financiado_banco - (amortizacao_base * (mes_banco - 1))
                     if saldo_parcial < 0: saldo_parcial = 0
@@ -165,13 +182,11 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 
                 dados_financiamento.append({
                     "Mês": mes,
-                    "Ano": f"Ano {(mes - 1) // 12 + 1}",
                     "Fase / Descrição": fase_desc,
                     "Parcela Total (R$)": round(prestacao_total, 2),
                     "Amortização (R$)": round(amort_mes, 2)
                 })
         else:
-            # Lógica Price
             if taxa_mensal > 0 and prazo_banco_meses > 0:
                 prestacao_price = valor_financiado_banco * (taxa_mensal * (1 + taxa_mensal)**prazo_banco_meses) / ((1 + taxa_mensal)**prazo_banco_meses - 1)
             else:
@@ -179,7 +194,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 
             for mes in range(1, total_meses_simulacao + 1):
                 if mes <= prazo_fase_obras:
-                    # Fase de Obras / Pré-chaves / Saldos intermediários
                     parc_constr = prestacao_construtora_mensal if (usar_construtora and mes <= meses_construtora) else 0.0
                     parc_obra = valor_medio_obra if (incluir_obra and mes <= meses_obra_duracao) else 0.0
                     
@@ -187,7 +201,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                     fase_desc = "Fase de Obras / Pré-Chaves (Construtora + Juros de Obra)"
                     amort_mes = 0.0
                 else:
-                    # Pós-Obra / Financiamento Bancário
                     juros_banco = valor_financiado_banco * taxa_mensal
                     amort_price = prestacao_price - juros_banco
                     prestacao_total = prestacao_price
@@ -196,7 +209,6 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                     
                 dados_financiamento.append({
                     "Mês": mes,
-                    "Ano": f"Ano {(mes - 1) // 12 + 1}",
                     "Fase / Descrição": fase_desc,
                     "Parcela Total (R$)": round(prestacao_total, 2),
                     "Amortização (R$)": round(amort_mes, 2)
@@ -208,7 +220,7 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
         st.dataframe(df_cliente, use_container_width=True, height=350)
         
         # ------------------------------------------
-        # GERANDO EXCEL PROFISSIONAL
+        # GERANDO EXCEL PROFISSIONAL (SEM COLUNA DE ANOS)
         # ------------------------------------------
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -242,19 +254,18 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             })
             
             ws.set_column('A:A', 10)
-            ws.set_column('B:B', 14)
-            ws.set_column('C:C', 38)
-            ws.set_column('D:E', 22)
+            ws.set_column('B:B', 42)
+            ws.set_column('C:D', 24)
             
             # Bloco Superior: Resumo Executivo
-            ws.merge_range('A1:E1', 'RESUMO DA PROPOSTA COMERCIAL & FLUXO', fmt_titulo)
+            ws.merge_range('A1:D1', 'RESUMO DA PROPOSTA COMERCIAL & FLUXO', fmt_titulo)
             
             resumo_linhas = [
                 ("Corretor Responsável", nome_corretor),
                 ("Contato WhatsApp", telefone),
                 ("Valor Total do Imóvel", valor_imovel),
                 ("Sinal / Entrada", sinal_entrada),
-                ("Utilização de FGTS", f"R$ {fgts_efetivo:,.2f}" if usar_fgts else "Não Utilizado"),
+                ("Utilização de FGTS", f"R$ {fgts_efetivo:,.2f} ({destino_fgts})" if usar_fgts else "Não Utilizado"),
                 ("Financiamento Bancário Aprovado", valor_financiado_banco)
             ]
             
@@ -271,7 +282,7 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             idx_linha = 2
             for rotulo, val in resumo_linhas:
                 ws.write(idx_linha, 0, rotulo, fmt_rotulo)
-                ws.merge_range(idx_linha, 1, idx_linha, 4, "", fmt_rotulo)
+                ws.merge_range(idx_linha, 1, idx_linha, 3, "", fmt_rotulo)
                 if isinstance(val, (int, float)):
                     ws.write(idx_linha, 1, val, fmt_valor_dado)
                 else:
@@ -279,10 +290,10 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
                 idx_linha += 1
                 
             idx_linha += 1
-            ws.merge_range(idx_linha, 0, idx_linha, 4, 'FLUXO DETALHADO DE PAGAMENTO', fmt_titulo)
+            ws.merge_range(idx_linha, 0, idx_linha, 3, 'FLUXO DETALHADO DE PAGAMENTO', fmt_titulo)
             idx_linha += 1
             
-            cabecalhos = ["Mês", "Período", "Fase / Descrição", "Parcela Total (R$)", "Amortização (R$)"]
+            cabecalhos = ["Mês", "Fase / Descrição", "Parcela Total (R$)", "Amortização (R$)"]
             for col_idx, cab in enumerate(cabecalhos):
                 ws.write(idx_linha, col_idx, cab, fmt_cabecalho_tabela)
             
@@ -291,10 +302,9 @@ if st.button("🚀 Gerar Planilha Executiva para o Cliente"):
             for item in dados_financiamento:
                 idx_linha += 1
                 ws.write(idx_linha, 0, item["Mês"], fmt_celula)
-                ws.write(idx_linha, 1, item["Ano"], fmt_celula)
-                ws.write(idx_linha, 2, item["Fase / Descrição"], fmt_celula)
-                ws.write(idx_linha, 3, item["Parcela Total (R$)"], fmt_moeda)
-                ws.write(idx_linha, 4, item["Amortização (R$)"], fmt_moeda)
+                ws.write(idx_linha, 1, item["Fase / Descrição"], fmt_celula)
+                ws.write(idx_linha, 2, item["Parcela Total (R$)"], fmt_moeda)
+                ws.write(idx_linha, 3, item["Amortização (R$)"], fmt_moeda)
                 
             ws.freeze_panes(linha_inicio_tabela, 0)
 
